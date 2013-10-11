@@ -3,7 +3,9 @@ package risiko.net;
 import org.zoolu.tools.Log;
 
 import risiko.net.configuration.ClientConfiguration;
+import risiko.net.messages.ConnectionAcceptedMsg;
 import risiko.net.messages.ConnectionMsg;
+import risiko.net.messages.ConnectionRefusedMsg;
 import risiko.net.messages.DisconnectionMsg;
 import risiko.net.messages.StartGameMsg;
 
@@ -21,6 +23,8 @@ public class Client extends Peer{
 	
 	// Game logic
 	private boolean m_gameStarted = false;
+	private boolean m_connected = false;
+	private boolean m_connectionRefused = false;
 	
 	public Client(String pathConfig, String key){
 		super(pathConfig, key);
@@ -48,6 +52,22 @@ public class Client extends Peer{
 				m_gameStarted = true;
 			}
 			
+			if (type.equals(DisconnectionMsg.DISCONNECTION_MSG)) {
+				m_log.println("Disconnecting from the server.");
+				m_connected = false;
+			}
+			
+			if (type.equals(ConnectionAcceptedMsg.CONNECTION_ACCEPTED_MSG)) {
+				m_log.println("Connection accepted from the server");
+				m_connected = true;
+			}
+			
+			if (type.equals(ConnectionRefusedMsg.CONNECTION_REFUSED_MSG)) {
+				m_log.println("Connection refused from the server");
+				m_connected = false;
+				m_connectionRefused = true;
+			}
+			
 		}catch(JSONException e){
 			throw new RuntimeException(e);
 		}
@@ -68,14 +88,24 @@ public class Client extends Peer{
 	
 	public void connect(){
 		send(new Address(m_config.server_address), new ConnectionMsg(this.peerDescriptor));
+		m_connectionRefused = false;
 	}
 	
 	public void disconnect(){
 		send(new Address(m_config.server_address), new DisconnectionMsg(this.peerDescriptor));
+		m_connected = false;
 	}
 	
-	public boolean gameStarted(){
+	public boolean isGameStarted(){
 		return m_gameStarted;
+	}
+	
+	public boolean isConnected(){
+		return m_connected;
+	}
+	
+	public boolean isConnectionRefused(){
+		return m_connectionRefused;
 	}
 	
 	/**
