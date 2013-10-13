@@ -9,17 +9,17 @@ import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
-import org.eclipse.swt.layout.RowData;
-import org.eclipse.swt.layout.RowLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Group;
+import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.TabFolder;
 import org.eclipse.swt.widgets.TabItem;
 
 import risiko.data.RisikoData;
+import risiko.data.PlayerColor;
 import risiko.net.Client;
 import risiko.net.Server;
 
@@ -55,10 +55,11 @@ public class TestUI {
 		public Group infoGroup;
 
 		public Button lunchClientButton;
+		
+		public Label playerColorLabel;
 
 		// Networking
 		public Client net;
-		public boolean started;
 	}
 
 	List<ClientUI> m_clients;
@@ -68,7 +69,6 @@ public class TestUI {
 		public Button startServer;
 
 		public Server net;
-		public boolean started;
 	}
 
 	private ServerUI m_server;
@@ -97,6 +97,8 @@ public class TestUI {
 		m_shell.open();
 	}
 
+	// TODO vedere se si riesce a spostare tutti i gruppi fuori dalla classe ClientUI dato che servono
+	// solo in fase di inizializzazione dell'interfaccia
 	private ClientUI createClientUI(TabFolder folder, ClientInfo info) {
 		ClientUI ui = new ClientUI();
 
@@ -128,11 +130,20 @@ public class TestUI {
 		ui.actionGroup.setText("Actions");
 		ui.actionGroup.setLayout(ui.mainLayout);
 
-		Group infoGroup = new Group(ui.mainComposite, SWT.NONE);
-		infoGroup.setText("Info");
-		infoGroup.setLayout(ui.mainLayout);
+		ui.infoGroup = new Group(ui.mainComposite, SWT.NONE);
+		ui.infoGroup.setText("Info");
+		ui.infoGroup.setLayout(ui.mainLayout);
+		
+		Composite infoComposite = new Composite(ui.infoGroup, SWT.NONE);
+		FillLayout infoCompositeLayout = new FillLayout();
+		infoCompositeLayout.type = SWT.HORIZONTAL;
+		infoComposite.setLayout(infoCompositeLayout);
+		
+		
+		ui.playerColorLabel = new Label(infoComposite, SWT.BORDER | SWT.CENTER);
+		ui.playerColorLabel.setText("NONE");
 
-		ui.lunchClientButton = new Button(infoGroup, SWT.PUSH);
+		ui.lunchClientButton = new Button(infoComposite, SWT.PUSH);
 		ui.lunchClientButton.setText(RisikoData.CONNECT_TEXT);
 		ui.lunchClientButton.setData(ui);
 		ui.lunchClientButton.addSelectionListener(new SelectionAdapter() {
@@ -198,11 +209,19 @@ public class TestUI {
 		m_display.dispose();
 	}
 	
+	private boolean m_serverInit = false;
+	
 	private void serverLogic(ServerUI server){
 		if (server.net != null) {
 			if (server.net.gameCanStart()) {
 				server.net.startGame();
 				server.startServer.setText(RisikoData.GAME_STARTED_TEXT);
+			}
+			if(server.net.isGameStarted()){
+				if(!m_serverInit){
+					server.net.assignIDToClients();
+					m_serverInit = true;
+				}
 			}
 		}
 	}
@@ -222,6 +241,13 @@ public class TestUI {
 		}
 		if(client.lunchClientButton.getText() == RisikoData.GAME_STARTED_TEXT ){
 			
+		}
+		
+		if(client.net.isGameStarted()){
+			
+			if( client.net.getColor() != PlayerColor.NONE ){
+				client.playerColorLabel.setText( client.net.getColor().toString() );
+			}
 		}
 		
 	}

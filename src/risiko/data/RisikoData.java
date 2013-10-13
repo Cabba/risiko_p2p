@@ -10,10 +10,4 @@ public class RisikoData {
 	//public static String CONNECTION_REFUSED_TEXT = "Connection refused. Retry";
 	public static String GAME_STARTED_TEXT = "Game Started";
 	
-	public enum PlayerColor{
-		BLUE,
-		RED,
-		YELLOW,
-		PURPLE
-	}
 }

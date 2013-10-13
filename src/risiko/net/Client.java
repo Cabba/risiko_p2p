@@ -2,18 +2,18 @@ package risiko.net;
 
 import org.zoolu.tools.Log;
 
+import risiko.data.PlayerColor;
 import risiko.net.configuration.ClientConfiguration;
 import risiko.net.messages.ConnectionAcceptedMsg;
 import risiko.net.messages.ConnectionMsg;
 import risiko.net.messages.ConnectionRefusedMsg;
 import risiko.net.messages.DisconnectionMsg;
+import risiko.net.messages.PlayerInfoMsg;
 import risiko.net.messages.StartGameMsg;
 
 import it.unipr.ce.dsg.s2p.org.json.JSONException;
 import it.unipr.ce.dsg.s2p.org.json.JSONObject;
-import it.unipr.ce.dsg.s2p.peer.NeighborPeerDescriptor;
 import it.unipr.ce.dsg.s2p.peer.Peer;
-import it.unipr.ce.dsg.s2p.peer.PeerDescriptor;
 import it.unipr.ce.dsg.s2p.sip.Address;
 
 public class Client extends Peer{
@@ -25,6 +25,8 @@ public class Client extends Peer{
 	private boolean m_gameStarted = false;
 	private boolean m_connected = false;
 	private boolean m_connectionRefused = false;
+	
+	private PlayerColor m_color;
 	
 	public Client(String pathConfig, String key){
 		super(pathConfig, key);
@@ -68,8 +70,15 @@ public class Client extends Peer{
 				m_connectionRefused = true;
 			}
 			
+			if (type.equals(PlayerInfoMsg.PLAYER_COLOR_MSG)) {
+				PlayerColor color = PlayerColor.valueOf( params.getString("color") );
+				m_color = color;
+				m_log.println("Assigned color to client is: " + m_color);
+			}
+			
 		}catch(JSONException e){
-			throw new RuntimeException(e);
+			//throw new RuntimeException(e);
+			e.printStackTrace();
 		}
 	}
 
@@ -106,6 +115,11 @@ public class Client extends Peer{
 	
 	public boolean isConnectionRefused(){
 		return m_connectionRefused;
+	}
+	
+	public PlayerColor getColor(){
+		if(m_color == null) return PlayerColor.NONE;
+		return m_color;
 	}
 	
 	/**

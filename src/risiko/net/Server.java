@@ -4,11 +4,14 @@ import java.util.Iterator;
 
 import org.zoolu.tools.Log;
 
+import risiko.data.PlayerInfo;
+import risiko.data.PlayerColor;
 import risiko.net.configuration.ServerConfiguration;
 import risiko.net.messages.ConnectionMsg;
 import risiko.net.messages.ConnectionAcceptedMsg;
 import risiko.net.messages.ConnectionRefusedMsg;
 import risiko.net.messages.DisconnectionMsg;
+import risiko.net.messages.PlayerInfoMsg;
 import risiko.net.messages.StartGameMsg;
 
 import it.unipr.ce.dsg.s2p.message.BasicMessage;
@@ -17,7 +20,6 @@ import it.unipr.ce.dsg.s2p.org.json.JSONObject;
 import it.unipr.ce.dsg.s2p.peer.NeighborPeerDescriptor;
 import it.unipr.ce.dsg.s2p.peer.Peer;
 import it.unipr.ce.dsg.s2p.peer.PeerDescriptor;
-import it.unipr.ce.dsg.s2p.peer.PeerListManager;
 import it.unipr.ce.dsg.s2p.sip.Address;
 
 /**
@@ -71,7 +73,7 @@ public class Server extends Peer {
 
 			JSONObject params = msg.getJSONObject("payload").getJSONObject("params");
 			String type = msg.get("type").toString();
-			// TODO vedere se si può portare fuori la creazione del descrittore
+		
 			// Connection ...
 			if (type.equals(ConnectionMsg.CONNECTION_MSG)) {
 				// If there is another match refuse the connection
@@ -81,9 +83,7 @@ public class Server extends Peer {
 					PeerDescriptor peerDesc = getPeerDescriptorFormJSON(msg);
 					peerList.put(peerDesc.getKey(), new NeighborPeerDescriptor(peerDesc));
 					send(sender, new ConnectionAcceptedMsg(peerDescriptor));
-					// m_log.println("New peer list: " + peerList.toString());
-					// System.out.println("New peer list: " +
-					// peerList.toString());
+					m_log.println("Peer " + peerDesc.getName() + " added to available peer list.");
 					if (peerList.size() >= m_serverConfig.min_clients_number) {
 						m_log.println("Minimum clients number reached.");
 					}
@@ -122,11 +122,24 @@ public class Server extends Peer {
 		return peerList.size();
 	}
 
+	public void assignIDToClients(){
+		Iterator<String> iter = peerList.keySet().iterator();
+		for( PlayerColor color : PlayerColor.values() ){
+			if(!iter.hasNext()) return; // Iterated over all players
+			if( color == PlayerColor.NONE ) continue;
+			
+			PlayerInfo info = new PlayerInfo(color);
+			NeighborPeerDescriptor peer = peerList.get((String)iter.next());
+			PlayerInfoMsg msg = new PlayerInfoMsg(info);
+			
+			send(new Address(peer.getAddress()), msg );
+			
+			m_log.println("Sended color " + info.getColor() + " to client " + peer.getName() );
+		}
+	}
 	/**
 	 * A game can start if there are enough player and there are no other match
 	 * occurring.
-	 * 
-	 * @return
 	 */
 	public boolean gameCanStart() {
 		if (m_gameStarted)
@@ -137,6 +150,10 @@ public class Server extends Peer {
 			return true;
 		} else
 			return false;
+	}
+	
+	public boolean isGameStarted(){
+		return m_gameStarted;
 	}
 
 	public void startGame() {
@@ -166,10 +183,9 @@ public class Server extends Peer {
 	 * @throws InterruptedException
 	 */
 	public static void main(String[] args) throws InterruptedException {
-		// TODO Auto-generated method stub
 		Server server = new Server("config/server.config", "1");
 
-		// Wait untile the game can start ...
+		// Wait until the game can start ...
 		while (!server.gameCanStart()) {
 			System.out.println("Not enought players ...");
 			Thread.sleep(1000);
