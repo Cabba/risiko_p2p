@@ -1,11 +1,19 @@
 package risiko.net;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
 import org.zoolu.tools.Log;
 
 import risiko.data.PlayerInfo;
 import risiko.data.PlayerColor;
+import risiko.data.RisikoData;
+import risiko.data.TerritoriesLayout;
+import risiko.data.TerritoryInfo;
 import risiko.net.configuration.ServerConfiguration;
 import risiko.net.messages.ConnectionMsg;
 import risiko.net.messages.ConnectionAcceptedMsg;
@@ -13,6 +21,7 @@ import risiko.net.messages.ConnectionRefusedMsg;
 import risiko.net.messages.DisconnectionMsg;
 import risiko.net.messages.PlayerInfoMsg;
 import risiko.net.messages.StartGameMsg;
+import risiko.net.messages.TerritoriesLayoutMsg;
 
 import it.unipr.ce.dsg.s2p.message.BasicMessage;
 import it.unipr.ce.dsg.s2p.org.json.JSONException;
@@ -34,9 +43,16 @@ public class Server extends Peer {
 
 	private ServerConfiguration m_serverConfig;
 
+	
 	// Logic
 	private boolean m_gameStarted = false;
-
+	
+	// TODO muovere le variabili che rappresentano la logica di gioco
+	// in un altra classe ? 
+	private TerritoriesLayout m_territories;
+	private int m_playerNumber;
+	private Map<PlayerInfo, NeighborPeerDescriptor> m_playersInfo;
+	
 	public Server(String pathConfig, String key) {
 		super(pathConfig, key);
 
@@ -48,6 +64,15 @@ public class Server extends Peer {
 			m_log = new Log(this.nodeConfig.log_path + "" + this.peerDescriptor.getName() + ".log", Log.LEVEL_MEDIUM);
 		}
 		m_log.print("creating log file.");
+		
+		// Initialize game logic ----
+		m_playersInfo = new HashMap<PlayerInfo, NeighborPeerDescriptor>();
+		
+		m_territories = new TerritoriesLayout();
+		// Every territory have at least 1 unit
+		for(int i = 0; i < RisikoData.mapColumns * RisikoData.mapRows; ++i){
+			m_territories.put(Integer.toString(i),  new TerritoryInfo(i, 1, PlayerColor.NONE) );
+		}
 	}
 
 	@Override
@@ -73,7 +98,7 @@ public class Server extends Peer {
 
 			JSONObject params = msg.getJSONObject("payload").getJSONObject("params");
 			String type = msg.get("type").toString();
-		
+
 			// Connection ...
 			if (type.equals(ConnectionMsg.CONNECTION_MSG)) {
 				// If there is another match refuse the connection
@@ -118,25 +143,69 @@ public class Server extends Peer {
 		}
 	}
 
-	public int getConnectedClientsNumber() {
+	public int getConnectedClientsNumber(){
 		return peerList.size();
 	}
 
-	public void assignIDToClients(){
+	public void assignIDToClients() {
 		Iterator<String> iter = peerList.keySet().iterator();
-		for( PlayerColor color : PlayerColor.values() ){
-			if(!iter.hasNext()) return; // Iterated over all players
-			if( color == PlayerColor.NONE ) continue;
-			
-			PlayerInfo info = new PlayerInfo(color);
-			NeighborPeerDescriptor peer = peerList.get((String)iter.next());
+		for (PlayerColor color : PlayerColor.values()) {
+			if (!iter.hasNext())
+				return; // Iterated over all players
+			if (color == PlayerColor.NONE)
+				continue;
+
+			// TODO configurare le unità in base al numero di partecipanti nelle regole
+			PlayerInfo info = new PlayerInfo(color, 30);
+			NeighborPeerDescriptor peer = peerList.get((String) iter.next());
+			m_playersInfo.put(info, peer);
 			PlayerInfoMsg msg = new PlayerInfoMsg(info);
+
+			send(new Address(peer.getAddress()), msg);
 			
-			send(new Address(peer.getAddress()), msg );
+			m_playerNumber++; // Get the number of player
 			
-			m_log.println("Sended color " + info.getColor() + " to client " + peer.getName() );
+			m_log.println("Sended color " + info.getColor() + " to client " + peer.getName());
 		}
 	}
+	
+	public void assignTerritoryToClients(){
+		// Generate a list of number and assign that number to the players
+		int size = RisikoData.mapColumns * RisikoData.mapRows;
+		List<Integer> random = new ArrayList<Integer>();
+		for(int i = 0; i < size ; ++i){
+			random.add(new Integer(i));
+		}
+		// Randomize the list of numbers
+		Collections.shuffle(random);
+		
+		int territoryForPlayer = size / m_playerNumber;
+		int remainder = size % m_playerNumber;
+		
+		Iterator<PlayerInfo> peer = m_playersInfo.keySet().iterator();
+		while(peer.hasNext()){
+			PlayerColor owner = PlayerColor.valueOf( peer.next().getColor() );
+			
+			for(int j = 0; j < territoryForPlayer; ++j){
+				String territoryId = random.get(0).toString();
+				m_territories.get(territoryId).setOwner(owner);
+				random.remove(0);
+				m_log.println("Assigned territory: " + territoryId + " at player " + owner);
+			}
+			
+			if(remainder > 0){
+				String territoryId = random.get(0).toString();
+				m_territories.get(territoryId).setOwner(owner);
+				random.remove(0);
+				remainder--;
+				m_log.println("Assigned territory: " + territoryId + " at player " + owner);
+			}
+		}
+		
+		// Send the new configuration at all the clients
+		broadcastMessage(new TerritoriesLayoutMsg( new TerritoriesLayout(m_territories)));
+	}
+
 	/**
 	 * A game can start if there are enough player and there are no other match
 	 * occurring.
@@ -151,8 +220,8 @@ public class Server extends Peer {
 		} else
 			return false;
 	}
-	
-	public boolean isGameStarted(){
+
+	public boolean isGameStarted() {
 		return m_gameStarted;
 	}
 

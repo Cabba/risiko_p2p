@@ -55,8 +55,9 @@ public class TestUI {
 		public Group infoGroup;
 
 		public Button lunchClientButton;
-		
+
 		public Label playerColorLabel;
+		public Label availableUnitLabel;
 
 		// Networking
 		public Client net;
@@ -97,7 +98,8 @@ public class TestUI {
 		m_shell.open();
 	}
 
-	// TODO vedere se si riesce a spostare tutti i gruppi fuori dalla classe ClientUI dato che servono
+	// TODO vedere se si riesce a spostare tutti i gruppi fuori dalla classe
+	// ClientUI dato che servono
 	// solo in fase di inizializzazione dell'interfaccia
 	private ClientUI createClientUI(TabFolder folder, ClientInfo info) {
 		ClientUI ui = new ClientUI();
@@ -133,15 +135,17 @@ public class TestUI {
 		ui.infoGroup = new Group(ui.mainComposite, SWT.NONE);
 		ui.infoGroup.setText("Info");
 		ui.infoGroup.setLayout(ui.mainLayout);
-		
+
 		Composite infoComposite = new Composite(ui.infoGroup, SWT.NONE);
 		FillLayout infoCompositeLayout = new FillLayout();
 		infoCompositeLayout.type = SWT.HORIZONTAL;
 		infoComposite.setLayout(infoCompositeLayout);
-		
-		
+
 		ui.playerColorLabel = new Label(infoComposite, SWT.BORDER | SWT.CENTER);
 		ui.playerColorLabel.setText("NONE");
+		
+		ui.availableUnitLabel = new Label(infoComposite, SWT.BORDER | SWT.CENTER );
+		ui.availableUnitLabel.setText("Unit: 0");
 
 		ui.lunchClientButton = new Button(infoComposite, SWT.PUSH);
 		ui.lunchClientButton.setText(RisikoData.CONNECT_TEXT);
@@ -186,8 +190,7 @@ public class TestUI {
 
 	}
 
-	public void setClientConfigurationData(String name, String configPath,
-			String key) {
+	public void setClientConfigurationData(String name, String configPath, String key) {
 		if (m_clientInfo == null)
 			m_clientInfo = new ArrayList<ClientInfo>();
 		m_clientInfo.add(new ClientInfo(name, configPath, key));
@@ -200,56 +203,60 @@ public class TestUI {
 			}
 
 			// Server updates
-			if(!m_shell.isDisposed()) serverLogic(m_server);
+			if (!m_shell.isDisposed())
+				serverLogic(m_server);
 
 			for (int i = 0; i < m_clients.size(); ++i) {
-				if(!m_shell.isDisposed()) clientLogic(m_clients.get(i));
+				if (!m_shell.isDisposed())
+					clientLogic(m_clients.get(i));
 			}
 		}
 		m_display.dispose();
 	}
-	
+
 	private boolean m_serverInit = false;
-	
-	private void serverLogic(ServerUI server){
+
+	private void serverLogic(ServerUI server) {
 		if (server.net != null) {
 			if (server.net.gameCanStart()) {
 				server.net.startGame();
 				server.startServer.setText(RisikoData.GAME_STARTED_TEXT);
 			}
-			if(server.net.isGameStarted()){
-				if(!m_serverInit){
+			if (server.net.isGameStarted()) {
+				if (!m_serverInit) {
 					server.net.assignIDToClients();
+					server.net.assignTerritoryToClients();
 					m_serverInit = true;
 				}
 			}
 		}
 	}
-	
-	private void clientLogic(ClientUI client){
+
+	private void clientLogic(ClientUI client) {
 		// Lunch button states
-		if( client.lunchClientButton.getText() == RisikoData.CONNECT_TEXT ){
-			if( client.net.isConnected() ) 
+		if (client.lunchClientButton.getText() == RisikoData.CONNECT_TEXT) {
+			if (client.net.isConnected())
 				client.lunchClientButton.setText(RisikoData.CONNECTED_TEXT);
-			if( client.net.isConnectionRefused() ){
+			if (client.net.isConnectionRefused()) {
 				client.lunchClientButton.setEnabled(true);
 			}
 		}
-		if(client.lunchClientButton.getText() == RisikoData.CONNECTED_TEXT){
-			if( client.net.isGameStarted() )
+		if (client.lunchClientButton.getText() == RisikoData.CONNECTED_TEXT) {
+			if (client.net.isGameStarted())
 				client.lunchClientButton.setText(RisikoData.GAME_STARTED_TEXT);
 		}
-		if(client.lunchClientButton.getText() == RisikoData.GAME_STARTED_TEXT ){
-			
+		if (client.lunchClientButton.getText() == RisikoData.GAME_STARTED_TEXT) {
+
 		}
-		
-		if(client.net.isGameStarted()){
-			
-			if( client.net.getColor() != PlayerColor.NONE ){
-				client.playerColorLabel.setText( client.net.getColor().toString() );
+
+		if (client.net.isGameStarted()) {
+
+			if (client.net.getColor() != PlayerColor.NONE) {
+				client.playerColorLabel.setText(client.net.getColor().toString());
+				client.availableUnitLabel.setText("Unit: " + client.net.getAvailableUnit());
 			}
 		}
-		
+
 	}
 
 	/**
