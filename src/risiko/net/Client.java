@@ -1,18 +1,25 @@
 package risiko.net;
 
+import java.lang.reflect.Type;
 import java.util.Iterator;
 
 import org.zoolu.tools.Log;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+
+import risiko.data.AttackData;
 import risiko.data.PlayerColor;
 import risiko.data.TerritoriesLayout;
 import risiko.data.TerritoryInfo;
 import risiko.net.configuration.ClientConfiguration;
+import risiko.net.gson.JSONMessage;
 import risiko.net.messages.AckMsg;
 import risiko.net.messages.ConnectionAcceptedMsg;
 import risiko.net.messages.ConnectionMsg;
 import risiko.net.messages.ConnectionRefusedMsg;
 import risiko.net.messages.DisconnectionMsg;
+import risiko.net.messages.EndGameMsg;
 import risiko.net.messages.PlayerInfoMsg;
 import risiko.net.messages.StartGameMsg;
 import risiko.net.messages.TerritoriesLayoutMsg;
@@ -26,7 +33,8 @@ public class Client extends Peer {
 
 	private Log m_log;
 	private ClientConfiguration m_config;
-
+	private Gson m_jsonParser;
+	
 	// Game logic
 	private boolean m_gameStarted = false;
 	private boolean m_connected = false;
@@ -52,6 +60,8 @@ public class Client extends Peer {
 		}
 		m_log.println("creating log file.");
 		m_territories = new TerritoriesLayout();
+		m_jsonParser = new Gson();
+		
 		setState(ClientState.WAIT_FOR_CONFIGURATION);
 	}
 
@@ -107,7 +117,7 @@ public class Client extends Peer {
 					else{
 						m_log.println("It's player " + m_turnOwner + " turn.");					
 					}
-					setState(ClientState.TURN_BEGIN);
+					setState(ClientState.NEW_TURN);
 				}
 			}
 
@@ -130,8 +140,17 @@ public class Client extends Peer {
 				setState(ClientState.TERRITORIES_UPDATED);
 			}
 
-			if (type.equals(TerritoriesLayoutMsg.TERRITORIES_LAYOUT_MSG)) {
-
+			if (type.equals(EndGameMsg.END_GAME_MSG)) {
+				m_log.println("Server terminated the game.");
+				disconnect();
+			}
+			
+			if(type.equals(AttackData.ATTACK_DATA_MSG)){
+				Type attackType = new TypeToken<JSONMessage<AttackData>>(){}.getType();
+				JSONMessage<AttackData> data = m_jsonParser.fromJson(msg.toString(), attackType);
+				AttackData attack = data.getPayload().getParams();
+				
+				m_log.println( attack.toString() );
 			}
 
 		} catch (JSONException e) {
@@ -159,6 +178,7 @@ public class Client extends Peer {
 	public void disconnect() {
 		send(new Address(m_config.server_address), new DisconnectionMsg(this.peerDescriptor));
 		m_connected = false;
+		setState(ClientState.GAME_DISCONNECTION);
 	}
 
 	public boolean isGameStarted() {
@@ -209,21 +229,5 @@ public class Client extends Peer {
 
 	public void synchronize() {
 		send(new Address(m_config.server_address), new AckMsg(peerDescriptor));
-	}
-
-	/**
-	 * Run the client
-	 */
-	public static void main(String[] args) throws InterruptedException {
-		Client client_1 = new Client("config/client_1.config", "2");
-		Client client_2 = new Client("config/client_2.config", "3");
-
-		client_1.connect();
-		client_2.connect();
-
-		Thread.sleep(2000);
-
-		client_2.disconnect();
-		client_1.disconnect();
 	}
 }

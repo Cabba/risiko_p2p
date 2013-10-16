@@ -1,6 +1,7 @@
 package risiko.net;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -9,21 +10,25 @@ import java.util.Map;
 
 import org.zoolu.tools.Log;
 
+import com.google.gson.Gson;
+
+import risiko.data.AttackData;
 import risiko.data.PlayerInfo;
 import risiko.data.PlayerColor;
 import risiko.data.RisikoData;
 import risiko.data.TerritoriesLayout;
 import risiko.data.TerritoryInfo;
 import risiko.net.configuration.ServerConfiguration;
+import risiko.net.gson.JSONMessage;
 import risiko.net.messages.AckMsg;
 import risiko.net.messages.ConnectionMsg;
 import risiko.net.messages.ConnectionAcceptedMsg;
 import risiko.net.messages.ConnectionRefusedMsg;
 import risiko.net.messages.DisconnectionMsg;
+import risiko.net.messages.EndGameMsg;
 import risiko.net.messages.PlayerInfoMsg;
 import risiko.net.messages.StartGameMsg;
 import risiko.net.messages.TerritoriesLayoutMsg;
-import risiko.net.messages.TurnOwnerMsg;
 
 import it.unipr.ce.dsg.s2p.message.BasicMessage;
 import it.unipr.ce.dsg.s2p.org.json.JSONException;
@@ -119,6 +124,8 @@ public class Server extends Peer {
 			if (type.equals(DisconnectionMsg.DISCONNECTION_MSG)) {
 				PeerDescriptor peerDesc = getPeerDescriptorFormJSON(msg);
 				peerList.remove(peerDesc.getKey());
+				if(m_gameStarted)
+					broadcastMessage(new EndGameMsg(peerDescriptor));
 			}
 			// TODO gestire arrivo di ACK dallo stesso client
 			if (type.equals(AckMsg.ACK_MSG)) {
@@ -248,6 +255,19 @@ public class Server extends Peer {
 			send(new Address(neighborPD.getAddress()), msg);
 		}
 	}
+	
+	private void broadcastMessage(String msg) {
+		Iterator<String> iter = this.peerList.keySet().iterator();
+		while (iter.hasNext()) {
+			String key = (String) iter.next();
+			NeighborPeerDescriptor neighborPD = this.peerList.get(key);
+			sendJSON(new Address(neighborPD.getAddress()), msg);
+		}
+	}
+	
+	private void sendJSON(Address toAddress, String msg){
+		sendMessage(toAddress, getAddress(), msg, "application/json");
+	}
 
 	private int m_barrierCount = 0;
 
@@ -270,7 +290,7 @@ public class Server extends Peer {
 		m_turnOwner.incrementTotalUnit(5);
 		broadcastMessage(new PlayerInfoMsg(m_turnOwner));
 	}
-
+	
 	public void run() {
 		// Initialization
 		while (!gameCanStart()) {
@@ -287,6 +307,11 @@ public class Server extends Peer {
 		assignTerritoryToClients();
 		barrier();
 
+		AttackData attack = new AttackData(10);
+		Gson gson = new Gson();
+		String msg = gson.toJson(new JSONMessage<AttackData>(attack, AttackData.ATTACK_DATA_MSG));
+		broadcastMessage(msg);
+		
 		boolean end = false;
 		// Turn loop
 		while (!end) {
@@ -302,19 +327,4 @@ public class Server extends Peer {
 
 	}
 
-	/**
-	 * Lunch the class for run the the server
-	 * 
-	 * @throws InterruptedException
-	 */
-	public static void main(String[] args) throws InterruptedException {
-		Server server = new Server("config/server.config", "1");
-
-		// Wait until the game can start ...
-		while (!server.gameCanStart()) {
-			System.out.println("Not enought players ...");
-			Thread.sleep(1000);
-		}
-		server.startGame();
-	}
 }
