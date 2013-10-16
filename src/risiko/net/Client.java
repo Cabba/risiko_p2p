@@ -8,6 +8,7 @@ import risiko.data.PlayerColor;
 import risiko.data.TerritoriesLayout;
 import risiko.data.TerritoryInfo;
 import risiko.net.configuration.ClientConfiguration;
+import risiko.net.messages.AckMsg;
 import risiko.net.messages.ConnectionAcceptedMsg;
 import risiko.net.messages.ConnectionMsg;
 import risiko.net.messages.ConnectionRefusedMsg;
@@ -29,12 +30,17 @@ public class Client extends Peer {
 	// Game logic
 	private boolean m_gameStarted = false;
 	private boolean m_connected = false;
-	private boolean m_connectionRefused = false;
 
 	private PlayerColor m_color;
 	private int m_availableUnit;
-	
+
 	private TerritoriesLayout m_territories;
+	private boolean m_initialized = false;
+	private PlayerColor m_turnOwner;
+	
+	// State management
+	private ClientState m_state;
+	private boolean m_stateChanged = false;
 
 	public Client(String pathConfig, String key) {
 		super(pathConfig, key);
@@ -45,6 +51,8 @@ public class Client extends Peer {
 			m_log = new Log(this.nodeConfig.log_path + "info_" + this.peerDescriptor.getName() + ".log", Log.LEVEL_MEDIUM);
 		}
 		m_log.println("creating log file.");
+		m_territories = new TerritoriesLayout();
+		setState(ClientState.WAIT_FOR_CONFIGURATION);
 	}
 
 	@Override
@@ -77,36 +85,57 @@ public class Client extends Peer {
 			if (type.equals(ConnectionRefusedMsg.CONNECTION_REFUSED_MSG)) {
 				m_log.println("Connection refused from the server");
 				m_connected = false;
-				m_connectionRefused = true;
+				setState(ClientState.CONNECTION_REFUSED);
 			}
 
 			if (type.equals(PlayerInfoMsg.PLAYER_COLOR_MSG)) {
 				PlayerColor color = PlayerColor.valueOf(params.getString("color"));
-				m_availableUnit = params.getInt("totalUnit");
-				m_color = color;
-				m_log.println("Assigned color to client is: " + m_color + ". Available unit are: " + m_availableUnit);
+				// If message is used during the initialization phase specifies the 
+				// available number of unit at the beginning and the player color.
+				if (m_initialized == false) {
+					m_availableUnit = params.getInt("totalUnit");
+					m_color = color;
+					m_log.println("Assigned color to client is: " + m_color + ". Available unit are: " + m_availableUnit);
+					setState(ClientState.CONFIGURED);
+					m_initialized = true;
+				} else {
+					m_turnOwner = color;
+					if(color == m_color){
+						m_log.println("It's my turn ...");
+						m_availableUnit = params.getInt("totalUnit");
+					}
+					else{
+						m_log.println("It's player " + m_turnOwner + " turn.");					
+					}
+					setState(ClientState.TURN_BEGIN);
+				}
 			}
-			
-			if(type.equals(TerritoriesLayoutMsg.TERRITORIES_LAYOUT_MSG)){
+
+			if (type.equals(TerritoriesLayoutMsg.TERRITORIES_LAYOUT_MSG)) {
 				// Clear the old data.
 				m_territories.clear();
 				// Refresh the data
 				Iterator<String> iter = params.keys();
-				while(iter.hasNext()){
+				while (iter.hasNext()) {
 					String key = iter.next();
-					
+
 					JSONObject territoryParam = params.getJSONObject(key);
-					int id = (Integer)territoryParam.get("id");
-					int unitNumber = (Integer)territoryParam.get("unitNumber");
+					int id = (Integer) territoryParam.get("id");
+					int unitNumber = (Integer) territoryParam.get("unitNumber");
 					PlayerColor owner = PlayerColor.valueOf((territoryParam.get("owner").toString()));
-					
+
 					TerritoryInfo territory = new TerritoryInfo(id, unitNumber, owner);
 					m_territories.put(territory);
 				}
+				setState(ClientState.TERRITORIES_UPDATED);
+			}
+
+			if (type.equals(TerritoriesLayoutMsg.TERRITORIES_LAYOUT_MSG)) {
+
 			}
 
 		} catch (JSONException e) {
-			// throw new RuntimeException(e);
+			new RuntimeException(e);
 			e.printStackTrace();
 		}
 	}
@@ -125,7 +154,6 @@ public class Client extends Peer {
 
 	public void connect() {
 		send(new Address(m_config.server_address), new ConnectionMsg(this.peerDescriptor));
-		m_connectionRefused = false;
 	}
 
 	public void disconnect() {
@@ -141,11 +169,7 @@ public class Client extends Peer {
 		return m_connected;
 	}
 
-	public boolean isConnectionRefused() {
-		return m_connectionRefused;
-	}
-	
-	public int getAvailableUnit(){
+	public int getAvailableUnit() {
 		return m_availableUnit;
 	}
 
@@ -155,8 +179,36 @@ public class Client extends Peer {
 		return m_color;
 	}
 	
-	public TerritoriesLayout getTerritoriesLayout(){
+	public PlayerColor getTurnOwner(){
+		return m_turnOwner;
+	}
+
+	public boolean isClientTurn(){
+		return (m_turnOwner == m_color);
+	}
+	
+	public TerritoriesLayout getTerritoriesLayout() {
 		return m_territories;
+	}
+
+	public void setState(ClientState state) {
+		m_log.println("State changed from " + m_state + " to " + state);
+		System.out.println("State changed from " + m_state + " to " + state);
+		m_state = state;
+		m_stateChanged = true;
+	}
+
+	public ClientState getState() {
+		m_stateChanged = false;
+		return m_state;
+	}
+
+	public boolean isStateChanged() {
+		return m_stateChanged;
+	}
+
+	public void synchronize() {
+		send(new Address(m_config.server_address), new AckMsg(peerDescriptor));
 	}
 
 	/**

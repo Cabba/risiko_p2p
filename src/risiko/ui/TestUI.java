@@ -1,6 +1,7 @@
 package risiko.ui;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 import org.eclipse.swt.SWT;
@@ -20,7 +21,9 @@ import org.eclipse.swt.widgets.TabItem;
 
 import risiko.data.RisikoData;
 import risiko.data.PlayerColor;
+import risiko.data.TerritoriesLayout;
 import risiko.net.Client;
+import risiko.net.ClientState;
 import risiko.net.Server;
 
 public class TestUI {
@@ -55,9 +58,11 @@ public class TestUI {
 		public Group infoGroup;
 
 		public Button lunchClientButton;
+		public List<Button> mapButtons;
 
 		public Label playerColorLabel;
 		public Label availableUnitLabel;
+		public Label msgLabel;
 
 		// Networking
 		public Client net;
@@ -70,6 +75,7 @@ public class TestUI {
 		public Button startServer;
 
 		public Server net;
+		public Thread m_serverThread;
 	}
 
 	private ServerUI m_server;
@@ -123,9 +129,11 @@ public class TestUI {
 		ui.mapComposite = new Composite(ui.mapGroup, SWT.NONE);
 		ui.mapComposite.setLayout(new GridLayout(RisikoData.mapColumns, true));
 		GridData buttonGrid = new GridData(SWT.FILL, SWT.FILL, true, true);
+		ui.mapButtons = new ArrayList<Button>();
 		for (int i = 0; i < RisikoData.mapColumns * RisikoData.mapRows; ++i) {
 			Button button = new Button(ui.mapComposite, SWT.PUSH);
 			button.setLayoutData(buttonGrid);
+			ui.mapButtons.add(button);
 		}
 
 		ui.actionGroup = new Group(ui.mainComposite, SWT.NONE);
@@ -138,15 +146,18 @@ public class TestUI {
 
 		Composite infoComposite = new Composite(ui.infoGroup, SWT.NONE);
 		FillLayout infoCompositeLayout = new FillLayout();
-		infoCompositeLayout.type = SWT.HORIZONTAL;
+		infoCompositeLayout.type = SWT.VERTICAL;
 		infoComposite.setLayout(infoCompositeLayout);
 
 		ui.playerColorLabel = new Label(infoComposite, SWT.BORDER | SWT.CENTER);
 		ui.playerColorLabel.setText("NONE");
-		
-		ui.availableUnitLabel = new Label(infoComposite, SWT.BORDER | SWT.CENTER );
+
+		ui.availableUnitLabel = new Label(infoComposite, SWT.BORDER | SWT.CENTER);
 		ui.availableUnitLabel.setText("Unit: 0");
 
+		ui.msgLabel = new Label(infoComposite, SWT.BORDER | SWT.CENTER);
+		ui.msgLabel.setText("Message box");
+		
 		ui.lunchClientButton = new Button(infoComposite, SWT.PUSH);
 		ui.lunchClientButton.setText(RisikoData.CONNECT_TEXT);
 		ui.lunchClientButton.setData(ui);
@@ -179,7 +190,14 @@ public class TestUI {
 				ServerUI ui = (ServerUI) e.widget.getData();
 				// runing network part ...
 				System.out.println("Starting the server ...");
-				ui.net = new Server("config/server.config", "1");
+				// Running the server thread ...
+				ui.m_serverThread = new Thread() {
+					public void run() {
+						Server server = new Server("config/server.config", "1");
+						server.run();
+					}
+				};
+				ui.m_serverThread.start();
 				ui.startServer.setText("Running..");
 				ui.startServer.setEnabled(false);
 			}
@@ -202,10 +220,6 @@ public class TestUI {
 				m_display.sleep();
 			}
 
-			// Server updates
-			if (!m_shell.isDisposed())
-				serverLogic(m_server);
-
 			for (int i = 0; i < m_clients.size(); ++i) {
 				if (!m_shell.isDisposed())
 					clientLogic(m_clients.get(i));
@@ -214,49 +228,62 @@ public class TestUI {
 		m_display.dispose();
 	}
 
-	private boolean m_serverInit = false;
-
-	private void serverLogic(ServerUI server) {
-		if (server.net != null) {
-			if (server.net.gameCanStart()) {
-				server.net.startGame();
-				server.startServer.setText(RisikoData.GAME_STARTED_TEXT);
-			}
-			if (server.net.isGameStarted()) {
-				if (!m_serverInit) {
-					server.net.assignIDToClients();
-					server.net.assignTerritoryToClients();
-					m_serverInit = true;
-				}
-			}
-		}
-	}
-
 	private void clientLogic(ClientUI client) {
-		// Lunch button states
-		if (client.lunchClientButton.getText() == RisikoData.CONNECT_TEXT) {
-			if (client.net.isConnected())
-				client.lunchClientButton.setText(RisikoData.CONNECTED_TEXT);
-			if (client.net.isConnectionRefused()) {
-				client.lunchClientButton.setEnabled(true);
-			}
-		}
 		if (client.lunchClientButton.getText() == RisikoData.CONNECTED_TEXT) {
 			if (client.net.isGameStarted())
 				client.lunchClientButton.setText(RisikoData.GAME_STARTED_TEXT);
 		}
-		if (client.lunchClientButton.getText() == RisikoData.GAME_STARTED_TEXT) {
 
-		}
+		// Parsing the states
+		if (client.net.isStateChanged()) {
+			ClientState state = client.net.getState();
 
-		if (client.net.isGameStarted()) {
+			if (state == ClientState.CONNECTION_REFUSED) {
+				System.out.println("Connection refused ...");
+				client.lunchClientButton.setEnabled(true);
+			}
+			if (state == ClientState.CONFIGURED) {
+				System.out.println("Setting client parameters ...");
 
-			if (client.net.getColor() != PlayerColor.NONE) {
+				client.lunchClientButton.setText(RisikoData.CONNECTED_TEXT);
+
 				client.playerColorLabel.setText(client.net.getColor().toString());
 				client.availableUnitLabel.setText("Unit: " + client.net.getAvailableUnit());
+				client.net.synchronize();
+			}
+			if (state == ClientState.TERRITORIES_UPDATED) {
+				System.out.println("Upating territories ...");
+				updateGrid(client);
+				client.net.synchronize();
+			}
+			
+			if( state == ClientState.TURN_BEGIN ){
+				if(client.net.getColor() != client.net.getTurnOwner() ){
+					client.msgLabel.setText("Its " + client.net.getTurnOwner() + " turn!");
+				}
+				else{
+					client.msgLabel.setText("Its your turn!!");
+				}
+				//client.net.synchronize();
 			}
 		}
 
+	}
+
+	private void updateGrid(ClientUI client) {
+		Iterator<String> iter = client.net.getTerritoriesLayout().keySet().iterator();
+		TerritoriesLayout territories = client.net.getTerritoriesLayout();
+		while (iter.hasNext()) {
+			String key = iter.next();
+
+			Button button = client.mapButtons.get(territories.get(key).getId());
+
+			PlayerColor owner = PlayerColor.valueOf(territories.get(key).getOwner());
+			int unitNumber = territories.get(key).getUnitNumber();
+			int id = territories.get(key).getId();
+
+			button.setText("Id: " + id + " ownr: " + owner + " unit: " + unitNumber);
+		}
 	}
 
 	/**

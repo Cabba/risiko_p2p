@@ -15,6 +15,7 @@ import risiko.data.RisikoData;
 import risiko.data.TerritoriesLayout;
 import risiko.data.TerritoryInfo;
 import risiko.net.configuration.ServerConfiguration;
+import risiko.net.messages.AckMsg;
 import risiko.net.messages.ConnectionMsg;
 import risiko.net.messages.ConnectionAcceptedMsg;
 import risiko.net.messages.ConnectionRefusedMsg;
@@ -22,6 +23,7 @@ import risiko.net.messages.DisconnectionMsg;
 import risiko.net.messages.PlayerInfoMsg;
 import risiko.net.messages.StartGameMsg;
 import risiko.net.messages.TerritoriesLayoutMsg;
+import risiko.net.messages.TurnOwnerMsg;
 
 import it.unipr.ce.dsg.s2p.message.BasicMessage;
 import it.unipr.ce.dsg.s2p.org.json.JSONException;
@@ -43,16 +45,18 @@ public class Server extends Peer {
 
 	private ServerConfiguration m_serverConfig;
 
-	
 	// Logic
 	private boolean m_gameStarted = false;
-	
+
 	// TODO muovere le variabili che rappresentano la logica di gioco
-	// in un altra classe ? 
+	// in un altra classe ?
 	private TerritoriesLayout m_territories;
 	private int m_playerNumber;
-	private Map<PlayerInfo, NeighborPeerDescriptor> m_playersInfo;
+	private Map<PlayerInfo, NeighborPeerDescriptor> m_players;
 	
+	private PlayerInfo m_turnOwner;
+	private int m_turnCounter;
+
 	public Server(String pathConfig, String key) {
 		super(pathConfig, key);
 
@@ -64,26 +68,23 @@ public class Server extends Peer {
 			m_log = new Log(this.nodeConfig.log_path + "" + this.peerDescriptor.getName() + ".log", Log.LEVEL_MEDIUM);
 		}
 		m_log.print("creating log file.");
-		
+
 		// Initialize game logic ----
-		m_playersInfo = new HashMap<PlayerInfo, NeighborPeerDescriptor>();
-		
+		m_players = new HashMap<PlayerInfo, NeighborPeerDescriptor>();
+
 		m_territories = new TerritoriesLayout();
 		// Every territory have at least 1 unit
-		for(int i = 0; i < RisikoData.mapColumns * RisikoData.mapRows; ++i){
-			m_territories.put(Integer.toString(i),  new TerritoryInfo(i, 1, PlayerColor.NONE) );
+		for (int i = 0; i < RisikoData.mapColumns * RisikoData.mapRows; ++i) {
+			m_territories.put(Integer.toString(i), new TerritoryInfo(i, 1, PlayerColor.NONE));
 		}
 	}
 
 	@Override
 	protected void onDeliveryMsgFailure(String arg0, Address arg1, String arg2) {
-		// TODO Auto-generated method stub
-
 	}
 
 	@Override
 	protected void onDeliveryMsgSuccess(String arg0, Address arg1, String arg2) {
-
 	}
 
 	@Override
@@ -119,6 +120,10 @@ public class Server extends Peer {
 				PeerDescriptor peerDesc = getPeerDescriptorFormJSON(msg);
 				peerList.remove(peerDesc.getKey());
 			}
+			// TODO gestire arrivo di ACK dallo stesso client
+			if (type.equals(AckMsg.ACK_MSG)) {
+				m_barrierCount++;
+			}
 
 		} catch (JSONException e) {
 			throw new RuntimeException(e);
@@ -143,7 +148,7 @@ public class Server extends Peer {
 		}
 	}
 
-	public int getConnectedClientsNumber(){
+	public int getConnectedClientsNumber() {
 		return peerList.size();
 	}
 
@@ -155,45 +160,46 @@ public class Server extends Peer {
 			if (color == PlayerColor.NONE)
 				continue;
 
-			// TODO configurare le unità in base al numero di partecipanti nelle regole
+			// TODO configurare le unità in base al numero di partecipanti nelle
+			// regole
 			PlayerInfo info = new PlayerInfo(color, 30);
 			NeighborPeerDescriptor peer = peerList.get((String) iter.next());
-			m_playersInfo.put(info, peer);
+			m_players.put(info, peer);
 			PlayerInfoMsg msg = new PlayerInfoMsg(info);
 
 			send(new Address(peer.getAddress()), msg);
-			
+
 			m_playerNumber++; // Get the number of player
-			
+
 			m_log.println("Sended color " + info.getColor() + " to client " + peer.getName());
 		}
 	}
-	
-	public void assignTerritoryToClients(){
+
+	public void assignTerritoryToClients() {
 		// Generate a list of number and assign that number to the players
 		int size = RisikoData.mapColumns * RisikoData.mapRows;
 		List<Integer> random = new ArrayList<Integer>();
-		for(int i = 0; i < size ; ++i){
+		for (int i = 0; i < size; ++i) {
 			random.add(new Integer(i));
 		}
 		// Randomize the list of numbers
 		Collections.shuffle(random);
-		
+
 		int territoryForPlayer = size / m_playerNumber;
 		int remainder = size % m_playerNumber;
-		
-		Iterator<PlayerInfo> peer = m_playersInfo.keySet().iterator();
-		while(peer.hasNext()){
-			PlayerColor owner = PlayerColor.valueOf( peer.next().getColor() );
-			
-			for(int j = 0; j < territoryForPlayer; ++j){
+
+		Iterator<PlayerInfo> peer = m_players.keySet().iterator();
+		while (peer.hasNext()) {
+			PlayerColor owner = PlayerColor.valueOf(peer.next().getColor());
+
+			for (int j = 0; j < territoryForPlayer; ++j) {
 				String territoryId = random.get(0).toString();
 				m_territories.get(territoryId).setOwner(owner);
 				random.remove(0);
 				m_log.println("Assigned territory: " + territoryId + " at player " + owner);
 			}
-			
-			if(remainder > 0){
+
+			if (remainder > 0) {
 				String territoryId = random.get(0).toString();
 				m_territories.get(territoryId).setOwner(owner);
 				random.remove(0);
@@ -201,9 +207,9 @@ public class Server extends Peer {
 				m_log.println("Assigned territory: " + territoryId + " at player " + owner);
 			}
 		}
-		
+
 		// Send the new configuration at all the clients
-		broadcastMessage(new TerritoriesLayoutMsg( new TerritoriesLayout(m_territories)));
+		broadcastMessage(new TerritoriesLayoutMsg(new TerritoriesLayout(m_territories)));
 	}
 
 	/**
@@ -233,9 +239,6 @@ public class Server extends Peer {
 
 	/**
 	 * Send in broadcast a message to all know peer (peer in peerList)
-	 * 
-	 * @param msg
-	 *            message to send.
 	 */
 	private void broadcastMessage(BasicMessage msg) {
 		Iterator<String> iter = this.peerList.keySet().iterator();
@@ -244,6 +247,59 @@ public class Server extends Peer {
 			NeighborPeerDescriptor neighborPD = this.peerList.get(key);
 			send(new Address(neighborPD.getAddress()), msg);
 		}
+	}
+
+	private int m_barrierCount = 0;
+
+	/**
+	 * Wait until all the peer send an ACK message.
+	 */
+	public void barrier() {
+		// TODO implementare una versione che controlla il descrittore del
+		// client
+		while (peerList.size() != m_barrierCount) {
+			// Do nothing
+		}
+		m_barrierCount = 0;
+	}
+
+	public void assignTurn(PlayerInfo player) {
+		m_log.println("Turn assigned at player: " + player.getColor());
+		m_turnOwner = player;
+		// TODO settare on la logica di gioco il valore dell'incremento
+		m_turnOwner.incrementTotalUnit(5);
+		broadcastMessage(new PlayerInfoMsg(m_turnOwner));
+	}
+
+	public void run() {
+		// Initialization
+		while (!gameCanStart()) {
+		} // Loop until game can start
+
+		m_log.println("Game is started");
+		startGame();
+
+		m_log.println("Assigning IDs to clients");
+		assignIDToClients();
+		barrier();
+
+		m_log.println("Assign territories to clients");
+		assignTerritoryToClients();
+		barrier();
+
+		boolean end = false;
+		// Turn loop
+		while (!end) {
+			// Assign the turn at all the player in order.
+			Iterator<PlayerInfo> players = m_players.keySet().iterator();
+			while (players.hasNext()) {
+
+				assignTurn(players.next());
+				barrier();
+
+			}
+		}
+
 	}
 
 	/**

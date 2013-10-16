@@ -15,6 +15,7 @@ public class TerritoriesLayoutMsg extends BasicMessage {
 	
 	public TerritoriesLayoutMsg(TerritoriesLayout territories){
 		super(TERRITORIES_LAYOUT_MSG, new Payload(territories) );
+		
 	}
 
 }

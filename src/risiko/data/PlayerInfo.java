@@ -29,4 +29,8 @@ public class PlayerInfo {
 	public void setTotalUnit(int totalUnit) {
 		m_totalUnit = totalUnit;
 	}
+	
+	public void incrementTotalUnit(int increment){
+		m_totalUnit += increment;
+	}
 }

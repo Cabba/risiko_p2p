@@ -1,0 +1,9 @@
+package risiko.net;
+
+public enum ClientState{
+	WAIT_FOR_CONFIGURATION,
+	CONNECTION_REFUSED,
+	CONFIGURED,
+	TERRITORIES_UPDATED,
+	TURN_BEGIN
+}

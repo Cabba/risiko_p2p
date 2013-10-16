@@ -8,8 +8,8 @@ public class PlayerInfoMsg extends BasicMessage {
 
 	public static final String PLAYER_COLOR_MSG = "player_color";
 	
-	public PlayerInfoMsg(PlayerInfo color){
-		super(PLAYER_COLOR_MSG, new Payload(color));
+	public PlayerInfoMsg(PlayerInfo player){
+		super(PLAYER_COLOR_MSG, new Payload(player));
 	}
 
 }

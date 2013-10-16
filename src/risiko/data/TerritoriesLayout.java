@@ -14,6 +14,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+
 public class TerritoriesLayout extends Hashtable<String, TerritoryInfo> {
 
 	private static final long serialVersionUID = 1L;
@@ -82,14 +83,15 @@ public class TerritoriesLayout extends Hashtable<String, TerritoryInfo> {
 
 	
 	synchronized public boolean writeList(OutputStream ostream) {
-
+		
 		try {
-
+			
 			JSONObject territories = new JSONObject(this);
 
 			PrintStream printTerritories = new PrintStream(ostream);
 			printTerritories.println(territories.toString());
 			printTerritories.close();
+			
 
 		} catch (Exception e) {
 			new RuntimeException(e);
