@@ -17,9 +17,7 @@ public class AttackData implements ISendable{
 	
 	public static final String ATTACK_DATA_MSG = "attack_data";
 	
-	public AttackData(int prova){
-		m_attacks = Arrays.asList(1, 2, 3, 4);
-		m_defence = Arrays.asList(5, 6, 7, 8);
+	public AttackData(){
 	}
 	
 	@Override

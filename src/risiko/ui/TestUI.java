@@ -65,6 +65,9 @@ public class TestUI {
 		public Label labelAvailableUnits;
 		public Label labelMsg;
 
+		// Logic
+		public TerritoriesLayout tempTerritories;
+
 		// Networking
 		public Client net;
 	}
@@ -76,7 +79,7 @@ public class TestUI {
 		public Button startServer;
 
 		public Server net;
-		public Thread m_serverThread;
+		public Thread serverThread;
 	}
 
 	private ServerUI m_server;
@@ -135,6 +138,29 @@ public class TestUI {
 		for (int i = 0; i < RisikoData.mapColumns * RisikoData.mapRows; ++i) {
 			Button button = new Button(ui.mapComposite, SWT.PUSH);
 			button.setLayoutData(buttonGrid);
+			button.setData("client", ui);
+			button.setData("id", i);
+			// TODO assolutamente da mettere a posto
+			button.addSelectionListener(new SelectionAdapter() {
+				public void widgetSelected(SelectionEvent e) {
+					ClientUI ui = (ClientUI) e.widget.getData("client");
+					int id = (Integer) e.widget.getData("id");
+
+					if (ui.net.getState() == ClientState.TERRITORIES_UPDATED) {
+						PlayerColor owner = ui.net.getColor();
+						int occupiedUnits = ui.net.getTerritoriesLayout().getSubset(owner).getPlayerUnit(owner);
+						int totalUnits = ui.net.getAvailableUnit();
+						PlayerColor terrOwner = ui.net.getTerritoriesLayout().get(id).getOwner();
+						System.out.println("ocupiedUnits = " + occupiedUnits + " totalUnits = " + totalUnits+" terrOwner = " + terrOwner);
+						if (totalUnits - occupiedUnits > 0 && owner == terrOwner) {
+							int units = ui.net.getTerritoriesLayout().get(id).getUnitNumber();
+							System.out.println("unit in the territory are: " + units);
+							ui.net.getTerritoriesLayout().updateTerritory(id, units+1, owner);
+							updateGrid(ui);
+						}
+					}
+				}
+			});
 			ui.buttonsMap.add(button);
 		}
 
@@ -149,14 +175,21 @@ public class TestUI {
 		actionComposite.setLayout(actionCompositeLayout);
 
 		ui.buttonSync = new Button(actionComposite, SWT.PUSH);
-		ui.buttonSync.setText("Synchronize");
+		ui.buttonSync.setText("OK");
 		ui.buttonSync.setData(ui);
 		ui.buttonSync.addSelectionListener(new SelectionAdapter() {
 			public void widgetSelected(SelectionEvent e) {
 				ClientUI ui = (ClientUI) e.widget.getData();
-				if (ui.net != null && ui.net.getState() != ClientState.WAIT_FOR_CONFIGURATION
-						&& ui.net.getState() != ClientState.CONNECTION_REFUSED)
-					ui.net.synchronize();
+				if (ui.net != null) {
+					if (ui.net.getState() != ClientState.WAIT_FOR_CONFIGURATION
+							&& ui.net.getState() != ClientState.CONNECTION_REFUSED) {
+						ui.net.synchronize();
+					}
+					// Reinforcement phase
+					if (ui.net.getState() == ClientState.TERRITORIES_UPDATED) {
+						ui.net.sendNewTerritoriesConfig(ui.tempTerritories);
+					}
+				}
 			}
 		});
 
@@ -186,10 +219,10 @@ public class TestUI {
 			public void widgetSelected(SelectionEvent e) {
 				ClientUI ui = (ClientUI) e.widget.getData();
 				// running network side
-				if(!ui.net.isConnected()){
+				if (!ui.net.isConnected()) {
 					ui.net.connect();
 					ui.buttonConnection.setText(RisikoData.DISCONNECT_TEXT);
-				}else{
+				} else {
 					ui.net.disconnect();
 					ui.buttonConnection.setText(RisikoData.CONNECT_TEXT);
 				}
@@ -217,13 +250,13 @@ public class TestUI {
 				// runing network part ...
 				System.out.println("Starting the server ...");
 				// Running the server thread ...
-				ui.m_serverThread = new Thread() {
+				ui.serverThread = new Thread() {
 					public void run() {
 						Server server = new Server("config/server.config", "1");
 						server.run();
 					}
 				};
-				ui.m_serverThread.start();
+				ui.serverThread.start();
 				ui.startServer.setText("Running..");
 				ui.startServer.setEnabled(false);
 			}
@@ -286,8 +319,8 @@ public class TestUI {
 				}
 				// client.net.synchronize();
 			}
-			
-			if(state == ClientState.GAME_DISCONNECTION){
+
+			if (state == ClientState.GAME_DISCONNECTION) {
 				reset();
 			}
 		}
@@ -302,15 +335,21 @@ public class TestUI {
 
 			Button button = client.buttonsMap.get(territories.get(key).getId());
 
-			PlayerColor owner = PlayerColor.valueOf(territories.get(key).getOwner());
+			PlayerColor owner = territories.get(key).getOwner();
 			int unitNumber = territories.get(key).getUnitNumber();
 			int id = territories.get(key).getId();
 
-			button.setText("Id: " + id + " ownr: " + owner + " unit: " + unitNumber);
+			button.setText(mapButtonMessage(id, owner, unitNumber));
 		}
 	}
 	
-	private void reset(){
+	
+	// TODO se viene usato solo in una funzione spostarla all'interno
+	private String mapButtonMessage(int id, PlayerColor color, int unitNumber){
+		return "ID: " + id + " COLOR: " + color + " UNIT: " + unitNumber; 
+	}
+
+	private void reset() {
 		System.out.println("RESET DA IMPLEMENTARE");
 	}
 

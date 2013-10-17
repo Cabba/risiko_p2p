@@ -12,4 +12,5 @@ public class RisikoData {
 	
 	public static String AVALABLE_UNIT_TEXT = "Available units: ";
 
+	public static String SCRIPT_NAME = "scripts/Rules.groovy";
 }

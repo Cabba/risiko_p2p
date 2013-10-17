@@ -1,7 +1,7 @@
 package risiko.net;
 
+import java.io.File;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -17,13 +17,13 @@ import risiko.net.data.PlayerColor;
 import risiko.net.data.RisikoData;
 import risiko.net.data.SignalType;
 import risiko.net.data.TerritoryInfo;
-import risiko.net.data.sendable.AttackData;
 import risiko.net.data.sendable.PlayerInfo;
 import risiko.net.data.sendable.Signal;
 import risiko.net.data.sendable.TerritoriesLayout;
 import risiko.net.gson.JSONTranslator;
+import risiko.net.script.IRules;
 
-import it.unipr.ce.dsg.s2p.message.BasicMessage;
+import groovy.lang.GroovyClassLoader;
 import it.unipr.ce.dsg.s2p.org.json.JSONException;
 import it.unipr.ce.dsg.s2p.org.json.JSONObject;
 import it.unipr.ce.dsg.s2p.peer.NeighborPeerDescriptor;
@@ -31,6 +31,8 @@ import it.unipr.ce.dsg.s2p.peer.Peer;
 import it.unipr.ce.dsg.s2p.peer.PeerDescriptor;
 import it.unipr.ce.dsg.s2p.sip.Address;
 
+//TODO muovere le variabili che rappresentano la logica di gioco in un
+//altra classe ?
 /**
  * When the server reaches the minimum number of players the game starts.
  * 
@@ -39,19 +41,25 @@ import it.unipr.ce.dsg.s2p.sip.Address;
  */
 public class Server extends Peer {
 
+	// UTILITIES
 	private Log m_log;
 	private ServerConfiguration m_serverConfig;
 	private Gson m_jsonParser;
+	private GroovyClassLoader m_scriptLoader;
 
-	// Logic
+	// SCRIPTING
+	private IRules m_rules;
+
+	// SYNCHRONIZATION
+	private int m_barrierCount = 0;
+
+	// GAME LOGIC
+	// Game state
 	private boolean m_gameStarted = false;
-
-	// TODO muovere le variabili che rappresentano la logica di gioco
-	// in un altra classe ?
 	private TerritoriesLayout m_territories;
 	private int m_playerNumber;
-	private Map<PlayerInfo, NeighborPeerDescriptor> m_players;
-
+	private Map<NeighborPeerDescriptor, PlayerInfo> m_players;
+	// Turn
 	private PlayerInfo m_turnOwner;
 	private int m_turnCounter;
 
@@ -60,7 +68,21 @@ public class Server extends Peer {
 
 		// Configuration file
 		m_serverConfig = new ServerConfiguration(pathConfig);
+		
+		// Parser
 		m_jsonParser = new Gson();
+
+		// Load script
+		m_scriptLoader = new GroovyClassLoader();
+		Object script = null;
+		try {
+			Class clazz = m_scriptLoader.parseClass(new File(RisikoData.SCRIPT_NAME));
+			script = clazz.newInstance();
+		} catch (Exception e) {
+			new RuntimeException();
+			e.printStackTrace();
+		}
+		m_rules = (IRules) script;
 
 		// Create the log file
 		if (this.nodeConfig.log_path != null) {
@@ -68,12 +90,12 @@ public class Server extends Peer {
 		}
 		m_log.print("creating log file.");
 
-		// Initialize game logic ----
-		m_players = new HashMap<PlayerInfo, NeighborPeerDescriptor>();
+		// Initialize game logic
+		m_players = new HashMap<NeighborPeerDescriptor, PlayerInfo>();
 
 		m_territories = new TerritoriesLayout();
-		// Every territory have at least 1 unit
 		for (int i = 0; i < RisikoData.mapColumns * RisikoData.mapRows; ++i) {
+			// 1 unit per territory at least
 			m_territories.put(new TerritoryInfo(i, 1, PlayerColor.NONE));
 		}
 	}
@@ -86,67 +108,100 @@ public class Server extends Peer {
 	protected void onDeliveryMsgSuccess(String arg0, Address arg1, String arg2) {
 	}
 
-	@Override
-	protected void onReceivedJSONMsg(JSONObject msg, Address sender) {
-		super.onReceivedJSONMsg(msg, sender);
+	private void printLogInformation(JSONObject msg, Address sender) {
 		try {
 			m_log.println("**!** " + this.peerDescriptor.getName() + " has received JSON message type '"
 					+ msg.get("type").toString() + "' form: " + sender.toString());
 			System.out.println("**!** " + this.peerDescriptor.getName() + " has received JSON message type '"
 					+ msg.get("type").toString() + "' form: " + sender.toString());
 			m_log.println(msg.toString());
+		} catch (JSONException e) {
+			new RuntimeException();
+			e.printStackTrace();
+		}
+	}
 
-			String params = msg.getJSONObject("payload").getJSONObject("params").toString();
-			String type = msg.get("type").toString();
+	@Override
+	protected void onReceivedJSONMsg(JSONObject msg, Address sender) {
+		super.onReceivedJSONMsg(msg, sender);
 
-			// Connection ...
-			if (type.equals(Signal.SIGNAL_MSG)) {
-
-				Signal signal = m_jsonParser.fromJson(params, Signal.class);
-
-				if (signal.getSignalType() == SignalType.CONNECTION) {
-					// If there is another match refuse the connection
-					if (m_gameStarted) {
-						String response = m_jsonParser.toJson(new JSONTranslator<Signal>(new Signal(
-								SignalType.CONNECTION_REFUSED, peerDescriptor)));
-						sendJSON(sender, response);
-					} else {
-						PeerDescriptor peerDesc = signal.getPeerDescriptor();
-						peerList.put(peerDesc.getKey(), new NeighborPeerDescriptor(peerDesc));
-						m_log.println("Peer " + peerDesc.getName() + " added to available peer list.");
-
-						String response = m_jsonParser.toJson(new JSONTranslator<Signal>(new Signal(
-								SignalType.CONNECTION_ACCEPTED, peerDescriptor)));
-						sendJSON(sender, response);
-
-						if (peerList.size() >= m_serverConfig.min_clients_number) {
-							m_log.println("Minimum clients number reached.");
-						}
-					}
-				} else if (signal.getSignalType() == SignalType.DISCONNECTION) {
-					PeerDescriptor peerDesc = signal.getPeerDescriptor();
-					peerList.remove(peerDesc.getKey());
-					if (m_gameStarted) {
-						String response = m_jsonParser.toJson(new JSONTranslator<Signal>(new Signal(
-								SignalType.END_GAME, peerDescriptor)));
-						broadcastMessage(response);
-					}
-				} else if (signal.getSignalType() == SignalType.ACK) {
-					// TODO gestire arrivo di ACK dallo stesso client
-					m_barrierCount++;
-				}
-			}
-
+		printLogInformation(msg, sender);
+		String params, type;
+		try {
+			params = msg.getJSONObject("payload").getJSONObject("params").toString();
+			type = msg.get("type").toString();
 		} catch (JSONException e) {
 			throw new RuntimeException(e);
 		}
+
+		if (type.equals(Signal.SIGNAL_MSG)) {
+
+			Signal signal = m_jsonParser.fromJson(params, Signal.class);
+
+			if (signal.getSignalType() == SignalType.CONNECTION) {
+				// If there is another match refuse the connection
+				if (m_gameStarted) {
+					String response = m_jsonParser.toJson(new JSONTranslator<Signal>(new Signal(
+							SignalType.CONNECTION_REFUSED, peerDescriptor)));
+					sendJSON(sender, response);
+				} else {
+					PeerDescriptor peerDesc = signal.getPeerDescriptor();
+					peerList.put(peerDesc.getKey(), new NeighborPeerDescriptor(peerDesc));
+					m_log.println("Peer " + peerDesc.getName() + " added to available peer list.");
+
+					String response = m_jsonParser.toJson(new JSONTranslator<Signal>(new Signal(
+							SignalType.CONNECTION_ACCEPTED, peerDescriptor)));
+					sendJSON(sender, response);
+
+					if (peerList.size() >= m_serverConfig.min_clients_number) {
+						m_log.println("Minimum clients number reached.");
+					}
+				}
+			} else if (signal.getSignalType() == SignalType.DISCONNECTION) {
+				PeerDescriptor peerDesc = signal.getPeerDescriptor();
+				peerList.remove(peerDesc.getKey());
+				if (m_gameStarted) {
+					String response = m_jsonParser.toJson(new JSONTranslator<Signal>(new Signal(SignalType.END_GAME,
+							peerDescriptor)));
+					broadcastMessage(response);
+				}
+			} else if (signal.getSignalType() == SignalType.ACK) {
+				// TODO gestire arrivo di ACK dallo stesso client
+				m_barrierCount++;
+			}
+		}
+
+		if (type.equals(TerritoriesLayout.TERRITORIES_LAYOUT_MSG)) {
+			TerritoriesLayout layout = m_jsonParser.fromJson(params, TerritoriesLayout.class);
+
+			// Get player from address
+			PlayerInfo player = new PlayerInfo();
+			Iterator<NeighborPeerDescriptor> iter = m_players.keySet().iterator();
+			while (iter.hasNext()) {
+				NeighborPeerDescriptor client = iter.next();
+				if (client.getAddress() == sender.toString()) {
+					player = m_players.get(client);
+				}
+			}
+
+			// TODO controllare la validità della nuova disposizione
+			if (m_rules.checkTerritoriesLayout(layout, player)) {
+				updateTerritories(layout, player);
+			}
+		}
+
+	}
+
+	private void updateTerritories(TerritoriesLayout layout, PlayerInfo info) {
+		// TODO da implemantare
+		System.out.println("DA IMPLEMENTARE!!!");
 	}
 
 	public int getConnectedClientsNumber() {
 		return peerList.size();
 	}
 
-	public void assignIDToClients() {
+	private void assignIDToClients() {
 		Iterator<String> iter = peerList.keySet().iterator();
 		for (PlayerColor color : PlayerColor.values()) {
 			if (!iter.hasNext())
@@ -158,7 +213,7 @@ public class Server extends Peer {
 			// regole
 			PlayerInfo info = new PlayerInfo(color, 30);
 			NeighborPeerDescriptor peer = peerList.get((String) iter.next());
-			m_players.put(info, peer);
+			m_players.put(peer, info);
 
 			String msg = m_jsonParser.toJson(new JSONTranslator<PlayerInfo>(info));
 			sendJSON(new Address(peer.getAddress()), msg);
@@ -169,22 +224,22 @@ public class Server extends Peer {
 		}
 	}
 
-	public void assignTerritoryToClients() {
+	private void assignTerritoryToClients() {
 		// Generate a list of number and assign that number to the players
 		int size = RisikoData.mapColumns * RisikoData.mapRows;
 		List<Integer> random = new ArrayList<Integer>();
 		for (int i = 0; i < size; ++i) {
 			random.add(new Integer(i));
 		}
-		// Randomize the list of numbers
+		// Randomize the list
 		Collections.shuffle(random);
 
 		int territoryForPlayer = size / m_playerNumber;
 		int remainder = size % m_playerNumber;
 
-		Iterator<PlayerInfo> peer = m_players.keySet().iterator();
+		Iterator<NeighborPeerDescriptor> peer = m_players.keySet().iterator();
 		while (peer.hasNext()) {
-			PlayerColor owner = peer.next().getColor();
+			PlayerColor owner = m_players.get(peer.next()).getColor();
 
 			for (int j = 0; j < territoryForPlayer; ++j) {
 				int territoryId = random.get(0);
@@ -211,7 +266,7 @@ public class Server extends Peer {
 	 * A game can start if there are enough player and there are no other match
 	 * occurring.
 	 */
-	public boolean gameCanStart() {
+	private boolean gameCanStart() {
 		if (m_gameStarted)
 			return false;
 		if (peerList.size() >= m_serverConfig.min_clients_number) {
@@ -222,11 +277,11 @@ public class Server extends Peer {
 			return false;
 	}
 
-	public boolean isGameStarted() {
+	private boolean isGameStarted() {
 		return m_gameStarted;
 	}
 
-	public void startGame() {
+	private void startGame() {
 		String msg = m_jsonParser.toJson(new JSONTranslator<Signal>(new Signal(SignalType.START_GAME, peerDescriptor)));
 		broadcastMessage(msg);
 		m_gameStarted = true;
@@ -245,21 +300,17 @@ public class Server extends Peer {
 		sendMessage(toAddress, getAddress(), msg, "application/json");
 	}
 
-	private int m_barrierCount = 0;
-
 	/**
 	 * Wait until all the peer send an ACK message.
 	 */
-	public void barrier() {
-		// TODO implementare una versione che controlla il descrittore del
-		// client
+	private void barrier() {
 		while (peerList.size() != m_barrierCount) {
 			// Do nothing
 		}
 		m_barrierCount = 0;
 	}
 
-	public void assignTurn(PlayerInfo player) {
+	private void assignTurn(PlayerInfo player) {
 		m_log.println("Turn assigned at player: " + player.getColor());
 		m_turnOwner = player;
 		// TODO settare on la logica di gioco il valore dell'incremento
@@ -283,14 +334,18 @@ public class Server extends Peer {
 		assignTerritoryToClients();
 		barrier();
 
+		// Wait for unit disposal
+		barrier();
 		boolean end = false;
 		// Turn loop
 		while (!end) {
 			// Assign the turn at all the player in order.
-			Iterator<PlayerInfo> players = m_players.keySet().iterator();
+			Iterator<NeighborPeerDescriptor> players = m_players.keySet().iterator();
 			while (players.hasNext()) {
+				m_turnCounter++;
+				PlayerInfo player = m_players.get(players.next());
 
-				assignTurn(players.next());
+				assignTurn(player);
 				barrier();
 
 			}
