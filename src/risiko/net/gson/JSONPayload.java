@@ -1,10 +1,10 @@
 package risiko.net.gson;
 
-public class Payload<Param> {
+public class JSONPayload<Param extends ISendable> {
 
 	private Param params;
 
-	public Payload(Param params) {
+	public JSONPayload(Param params) {
 		this.params = params;
 	}
 

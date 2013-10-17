@@ -1,4 +1,4 @@
-package risiko.data;
+package risiko.net.data;
 
 public enum PlayerColor{
 	RED,

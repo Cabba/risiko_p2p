@@ -1,0 +1,11 @@
+package risiko.net.data;
+
+public enum SignalType {
+	ACK,
+	CONNECTION,
+	CONNECTION_ACCEPTED,
+	CONNECTION_REFUSED,
+	DISCONNECTION,
+	END_GAME,
+	START_GAME
+}

@@ -19,12 +19,12 @@ import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.TabFolder;
 import org.eclipse.swt.widgets.TabItem;
 
-import risiko.data.RisikoData;
-import risiko.data.PlayerColor;
-import risiko.data.TerritoriesLayout;
 import risiko.net.Client;
 import risiko.net.ClientState;
 import risiko.net.Server;
+import risiko.net.data.PlayerColor;
+import risiko.net.data.RisikoData;
+import risiko.net.data.sendable.TerritoriesLayout;
 
 public class TestUI {
 
@@ -295,10 +295,10 @@ public class TestUI {
 	}
 
 	private void updateGrid(ClientUI client) {
-		Iterator<String> iter = client.net.getTerritoriesLayout().keySet().iterator();
+		Iterator<Integer> iter = client.net.getTerritoriesLayout().keySet().iterator();
 		TerritoriesLayout territories = client.net.getTerritoriesLayout();
 		while (iter.hasNext()) {
-			String key = iter.next();
+			Integer key = iter.next();
 
 			Button button = client.buttonsMap.get(territories.get(key).getId());
 
