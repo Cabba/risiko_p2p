@@ -94,14 +94,14 @@ public class TestUI {
 
 		m_shell.setLayout(new FillLayout());
 
-		// One client
 		TabFolder folder = new TabFolder(m_shell, SWT.BORDER);
+
+		m_server = createServerUI(folder);
 
 		m_clients = new ArrayList<ClientUI>();
 		for (int i = 0; i < m_clientInfo.size(); ++i) {
 			m_clients.add(createClientUI(folder, m_clientInfo.get(i)));
 		}
-		m_server = createServerUI(folder);
 
 		folder.pack();
 
@@ -146,16 +146,17 @@ public class TestUI {
 					ClientUI ui = (ClientUI) e.widget.getData("client");
 					int id = (Integer) e.widget.getData("id");
 
-					if (ui.net.getState() == ClientState.TERRITORIES_UPDATED) {
+					if (ui.net.getState() == ClientState.REINFORCEMENT) {
 						PlayerColor owner = ui.net.getColor();
 						int occupiedUnits = ui.net.getTerritoriesLayout().getSubset(owner).getPlayerUnit(owner);
 						int totalUnits = ui.net.getAvailableUnit();
 						PlayerColor terrOwner = ui.net.getTerritoriesLayout().get(id).getOwner();
-						System.out.println("ocupiedUnits = " + occupiedUnits + " totalUnits = " + totalUnits+" terrOwner = " + terrOwner);
+						System.out.println("ocupiedUnits = " + occupiedUnits + " totalUnits = " + totalUnits
+								+ " terrOwner = " + terrOwner);
 						if (totalUnits - occupiedUnits > 0 && owner == terrOwner) {
 							int units = ui.net.getTerritoriesLayout().get(id).getUnitNumber();
 							System.out.println("unit in the territory are: " + units);
-							ui.net.getTerritoriesLayout().updateTerritory(id, units+1, owner);
+							ui.net.getTerritoriesLayout().updateTerritory(id, units + 1, owner);
 							updateGrid(ui);
 						}
 					}
@@ -181,13 +182,9 @@ public class TestUI {
 			public void widgetSelected(SelectionEvent e) {
 				ClientUI ui = (ClientUI) e.widget.getData();
 				if (ui.net != null) {
-					if (ui.net.getState() != ClientState.WAIT_FOR_CONFIGURATION
-							&& ui.net.getState() != ClientState.CONNECTION_REFUSED) {
-						ui.net.synchronize();
-					}
 					// Reinforcement phase
-					if (ui.net.getState() == ClientState.TERRITORIES_UPDATED) {
-						ui.net.sendNewTerritoriesConfig(ui.tempTerritories);
+					if (ui.net.getState() == ClientState.REINFORCEMENT) {
+						ui.net.updateTerritoriesLayout();
 					}
 				}
 			}
@@ -285,6 +282,7 @@ public class TestUI {
 			}
 		}
 		m_display.dispose();
+
 	}
 
 	private void clientLogic(ClientUI client) {
@@ -304,20 +302,30 @@ public class TestUI {
 				client.net.synchronize();
 			}
 
-			if (state == ClientState.TERRITORIES_UPDATED) {
+			if (state == ClientState.TURN_ASSIGNED) {
 				System.out.println("Upating territories");
 				updateGrid(client);
 				client.net.synchronize();
 			}
 
-			if (state == ClientState.NEW_TURN) {
+			if (state == ClientState.REINFORCEMENT) {
 				if (client.net.isClientTurn()) {
-					client.labelMsg.setText("Its your turn!!");
+					client.labelMsg.setText("Its your turn. " + RisikoData.DISPOSE_UNITS_TEXT);
 					client.labelAvailableUnits.setText(RisikoData.AVALABLE_UNIT_TEXT + client.net.getAvailableUnit());
 				} else {
-					client.labelMsg.setText("Its " + client.net.getTurnOwner() + " turn.");
+					client.labelMsg.setText("Its " + client.net.getTurnOwner() + " turn. "
+							+ RisikoData.DISPOSE_UNITS_TEXT);
 				}
-				// client.net.synchronize();
+				client.net.synchronize();
+			}
+
+			if (state == ClientState.END_REINFORCEMENT) {
+				updateGrid(client);
+				if(client.net.isClientTurn()){
+					client.labelMsg.setText("Its your turn. Attack one player.");
+				}else{
+					client.labelMsg.setText("Its " + client.net.getTurnOwner() + " turn owner (ATTACK PHASE).");
+				}
 			}
 
 			if (state == ClientState.GAME_DISCONNECTION) {
@@ -342,15 +350,14 @@ public class TestUI {
 			button.setText(mapButtonMessage(id, owner, unitNumber));
 		}
 	}
-	
-	
+
 	// TODO se viene usato solo in una funzione spostarla all'interno
-	private String mapButtonMessage(int id, PlayerColor color, int unitNumber){
-		return "ID: " + id + " COLOR: " + color + " UNIT: " + unitNumber; 
+	private String mapButtonMessage(int id, PlayerColor color, int unitNumber) {
+		return "ID: " + id + " COLOR: " + color + " UNIT: " + unitNumber;
 	}
 
 	private void reset() {
-		System.out.println("RESET DA IMPLEMENTARE");
+		System.out.println("RESET - DA IMPLEMENTARE");
 	}
 
 	/**

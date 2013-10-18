@@ -6,7 +6,7 @@ import risiko.net.gson.ISendable;
 
 public class Signal implements ISendable{
 
-	public static String SIGNAL_MSG = "flag_message";
+	public static String SIGNAL_MSG = "signal_message";
 	private SignalType m_flag;
 	private PeerDescriptor m_descriptor;
 	

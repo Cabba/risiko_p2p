@@ -42,7 +42,7 @@ public class TerritoriesLayout implements ISendable{
 	
 	public TerritoriesLayout getSubset(PlayerColor owner){
 		TerritoriesLayout res = new TerritoriesLayout();
-		Iterator<Integer> iter = keySet().iterator();
+		Iterator<Integer> iter = m_territories.keySet().iterator();
 		while(iter.hasNext()){
 			Integer key = iter.next();
 			if(m_territories.get(key).getOwner() == owner){

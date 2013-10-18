@@ -8,7 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import risiko.net.gson.ISendable;
-import risiko.net.gson.JSONTranslator;
+import risiko.net.gson.JSONMessage;
 
 public class AttackData implements ISendable{
 

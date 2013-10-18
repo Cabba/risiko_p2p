@@ -8,7 +8,7 @@ public class PlayerInfo implements ISendable{
 	private PlayerColor m_color;
 	private int m_totalUnit;
 	
-	public static final String PLAYER_COLOR_MSG = "player_color";
+	public static final String PLAYER_COLOR_MSG = "player_info";
 
 	public PlayerInfo() {
 		m_color = PlayerColor.NONE;
