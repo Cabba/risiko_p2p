@@ -16,6 +16,7 @@ import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Shell;
+import org.eclipse.swt.widgets.Spinner;
 import org.eclipse.swt.widgets.TabFolder;
 import org.eclipse.swt.widgets.TabItem;
 
@@ -60,16 +61,25 @@ public class TestUI {
 		public Button buttonConnection;
 		public List<Button> buttonsMap;
 		public Button buttonSync;
+		public Button buttonAttack;
+		public Button buttonRemoveUnits;
 
 		public Label labelPlayerColor;
 		public Label labelAvailableUnits;
 		public Label labelMsg;
+		public Label labelAttacker;
+		public Label labelAttacked;
+		public Label labelAttackingUnits;
 
-		// Logic
-		public TerritoriesLayout tempTerritories;
+		public Spinner spinnerAttacker;
+		public Spinner spinnerAttacked;
+		public Spinner spinnerAttackingUnits;
+
+		public boolean removeUnits = false;
 
 		// Networking
 		public Client net;
+
 	}
 
 	List<ClientUI> m_clients;
@@ -78,7 +88,6 @@ public class TestUI {
 		public TabItem serverTab;
 		public Button startServer;
 
-		public Server net;
 		public Thread serverThread;
 	}
 
@@ -140,30 +149,46 @@ public class TestUI {
 			button.setLayoutData(buttonGrid);
 			button.setData("client", ui);
 			button.setData("id", i);
-			// TODO assolutamente da mettere a posto
+			// Setting buttons function
 			button.addSelectionListener(new SelectionAdapter() {
 				public void widgetSelected(SelectionEvent e) {
 					ClientUI ui = (ClientUI) e.widget.getData("client");
 					int id = (Integer) e.widget.getData("id");
 
+					// Update the units in the territory
 					if (ui.net.getState() == ClientState.REINFORCEMENT) {
-						PlayerColor owner = ui.net.getColor();
-						int occupiedUnits = ui.net.getTerritoriesLayout().getSubset(owner).getPlayerUnit(owner);
+						PlayerColor player = ui.net.getColor();
+						int occupiedUnits = ui.net.getUsedUnits();
 						int totalUnits = ui.net.getAvailableUnit();
 						PlayerColor terrOwner = ui.net.getTerritoriesLayout().get(id).getOwner();
-						System.out.println("ocupiedUnits = " + occupiedUnits + " totalUnits = " + totalUnits
-								+ " terrOwner = " + terrOwner);
-						if (totalUnits - occupiedUnits > 0 && owner == terrOwner) {
+
+						if (totalUnits - occupiedUnits > 0 && player == terrOwner) {
 							int units = ui.net.getTerritoriesLayout().get(id).getUnitNumber();
-							System.out.println("unit in the territory are: " + units);
-							ui.net.getTerritoriesLayout().updateTerritory(id, units + 1, owner);
+							int increment = ui.removeUnits ? -1 : 1;
+							if (units == 1 && increment == -1)
+								increment = 0;
+							ui.net.getTerritoriesLayout().updateTerritory(id, units + increment, player);
 							updateGrid(ui);
+							// Update available units message
+							ui.labelAvailableUnits.setText(unitLabelMessage(totalUnits, totalUnits - occupiedUnits
+									- increment));
+
 						}
 					}
 				}
 			});
 			ui.buttonsMap.add(button);
 		}
+
+		ui.buttonRemoveUnits = new Button(ui.mapComposite, SWT.CHECK);
+		ui.buttonRemoveUnits.setText("Remove units");
+		ui.buttonRemoveUnits.setData(ui);
+		ui.buttonRemoveUnits.addSelectionListener(new SelectionAdapter() {
+			public void widgetSelected(SelectionEvent e) {
+				ClientUI ui = (ClientUI) e.widget.getData();
+				ui.removeUnits = !ui.removeUnits;
+			}
+		});
 
 		// ACTION BAR
 		ui.groupAction = new Group(ui.mainComposite, SWT.NONE);
@@ -175,8 +200,44 @@ public class TestUI {
 		actionCompositeLayout.type = SWT.HORIZONTAL;
 		actionComposite.setLayout(actionCompositeLayout);
 
+		ui.labelAttacker = new Label(actionComposite, SWT.NONE);
+		ui.labelAttacker.setText("-");
+		ui.spinnerAttacker = new Spinner(actionComposite, SWT.BORDER);
+		ui.spinnerAttacker.setMinimum(0);
+		ui.spinnerAttacker.setMaximum(RisikoData.mapColumns * RisikoData.mapRows);
+
+		ui.labelAttacked = new Label(actionComposite, SWT.NONE);
+		ui.labelAttacked.setText("-");
+		ui.spinnerAttacked = new Spinner(actionComposite, SWT.BORDER);
+		ui.spinnerAttacked.setMinimum(0);
+		ui.spinnerAttacked.setMaximum(RisikoData.mapColumns * RisikoData.mapRows);
+
+		ui.labelAttackingUnits = new Label(actionComposite, SWT.NONE);
+		ui.labelAttackingUnits.setText("-");
+		ui.spinnerAttackingUnits = new Spinner(actionComposite, SWT.BORDER);
+
+		ui.buttonAttack = new Button(actionComposite, SWT.PUSH);
+		ui.buttonAttack.setText("-");
+		ui.buttonAttack.setEnabled(false);
+		ui.buttonAttack.setData(ui);
+		ui.buttonAttack.addSelectionListener(new SelectionAdapter() {
+			public void widgetSelected(SelectionEvent e) {
+				ClientUI ui = (ClientUI) e.widget.getData();
+				int attacker = Integer.parseInt(ui.spinnerAttacker.getText());
+				int attacked = Integer.parseInt(ui.spinnerAttacked.getText());
+				int units = Integer.parseInt(ui.spinnerAttackingUnits.getText());
+				if( ui.net.attack(attacker, attacked, units) ){
+					ui.buttonAttack.setText("Attack sended.");
+				}
+				else{
+					ui.buttonAttack.setText("Invalid attack. Retry");
+				}
+			}
+		});
+
 		ui.buttonSync = new Button(actionComposite, SWT.PUSH);
-		ui.buttonSync.setText("OK");
+		ui.buttonSync.setText("Next phase.");
+		ui.buttonSync.setEnabled(false);
 		ui.buttonSync.setData(ui);
 		ui.buttonSync.addSelectionListener(new SelectionAdapter() {
 			public void widgetSelected(SelectionEvent e) {
@@ -185,6 +246,8 @@ public class TestUI {
 					// Reinforcement phase
 					if (ui.net.getState() == ClientState.REINFORCEMENT) {
 						ui.net.updateTerritoriesLayout();
+					} else if (ui.net.getState() == ClientState.END_REINFORCEMENT) {
+						ui.net.finishAttackPhase();
 					}
 				}
 			}
@@ -201,10 +264,10 @@ public class TestUI {
 		infoComposite.setLayout(infoCompositeLayout);
 
 		ui.labelPlayerColor = new Label(infoComposite, SWT.BORDER | SWT.CENTER);
-		ui.labelPlayerColor.setText("NONE");
+		ui.labelPlayerColor.setText("Player color");
 
 		ui.labelAvailableUnits = new Label(infoComposite, SWT.BORDER | SWT.CENTER);
-		ui.labelAvailableUnits.setText("Unit: 0");
+		ui.labelAvailableUnits.setText("Units counter");
 
 		ui.labelMsg = new Label(infoComposite, SWT.BORDER | SWT.CENTER);
 		ui.labelMsg.setText("Message box");
@@ -244,7 +307,6 @@ public class TestUI {
 		ui.startServer.addSelectionListener(new SelectionAdapter() {
 			public void widgetSelected(SelectionEvent e) {
 				ServerUI ui = (ServerUI) e.widget.getData();
-				// runing network part ...
 				System.out.println("Starting the server ...");
 				// Running the server thread ...
 				ui.serverThread = new Thread() {
@@ -298,33 +360,52 @@ public class TestUI {
 			if (state == ClientState.CONFIGURED) {
 				System.out.println("Client connected - Setting parameters");
 				client.labelPlayerColor.setText(client.net.getColor().toString());
-				client.labelAvailableUnits.setText(RisikoData.AVALABLE_UNIT_TEXT + client.net.getAvailableUnit());
 				client.net.synchronize();
 			}
 
 			if (state == ClientState.TURN_ASSIGNED) {
 				System.out.println("Upating territories");
+				int totalUnits = client.net.getAvailableUnit();
+				int usedUnits = client.net.getUsedUnits();
+				client.labelAvailableUnits.setText(unitLabelMessage(totalUnits, totalUnits - usedUnits));
+
 				updateGrid(client);
+
 				client.net.synchronize();
 			}
 
 			if (state == ClientState.REINFORCEMENT) {
+				System.out.println("Begin of reinforcement.");
 				if (client.net.isClientTurn()) {
-					client.labelMsg.setText("Its your turn. " + RisikoData.DISPOSE_UNITS_TEXT);
-					client.labelAvailableUnits.setText(RisikoData.AVALABLE_UNIT_TEXT + client.net.getAvailableUnit());
+					client.labelMsg.setText("It's your turn. " + RisikoData.DISPOSE_UNITS_TEXT);
 				} else {
-					client.labelMsg.setText("Its " + client.net.getTurnOwner() + " turn. "
+					client.labelMsg.setText("It's " + client.net.getTurnOwner() + " turn. "
 							+ RisikoData.DISPOSE_UNITS_TEXT);
 				}
+				// Set new text in actions buttons
+				client.buttonSync.setText("Units disposed.");
+				client.buttonSync.setEnabled(true);
+
 				client.net.synchronize();
 			}
 
 			if (state == ClientState.END_REINFORCEMENT) {
+				System.out.println("End of reinforcement.");
 				updateGrid(client);
-				if(client.net.isClientTurn()){
-					client.labelMsg.setText("Its your turn. Attack one player.");
-				}else{
-					client.labelMsg.setText("Its " + client.net.getTurnOwner() + " turn owner (ATTACK PHASE).");
+
+				// Set new text in actions buttons
+				if (client.net.isClientTurn()) {
+					client.buttonAttack.setEnabled(true);
+					client.buttonAttack.setText("Attack");
+					client.buttonSync.setText("Finish turn.");
+					client.labelMsg.setText("It's your turn. Attack one player.");
+					client.labelAttacker.setText("Attacker id:");
+					client.labelAttacked.setText("Attacked id:");
+					client.labelAttackingUnits.setText("Attacking units:");
+				} else {
+					client.buttonSync.setText("Wait turn end.");
+					client.buttonSync.setEnabled(false);
+					client.labelMsg.setText(client.net.getTurnOwner() + " is turn owner (ATTACK PHASE).");
 				}
 			}
 
@@ -356,15 +437,14 @@ public class TestUI {
 		return "ID: " + id + " COLOR: " + color + " UNIT: " + unitNumber;
 	}
 
+	private String unitLabelMessage(int totalUnits, int remainingUnits) {
+		return "You have " + totalUnits + " total units, and " + remainingUnits + " can be placed.";
+	}
+
 	private void reset() {
 		System.out.println("RESET - DA IMPLEMENTARE");
 	}
 
-	/**
-	 * Lunch user interface
-	 * 
-	 * @param args
-	 */
 	public static void main(String[] args) {
 		TestUI ui = new TestUI();
 

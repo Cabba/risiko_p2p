@@ -17,6 +17,7 @@ import risiko.net.data.PlayerColor;
 import risiko.net.data.RisikoData;
 import risiko.net.data.SignalType;
 import risiko.net.data.TerritoryInfo;
+import risiko.net.data.sendable.AttackData;
 import risiko.net.data.sendable.PlayerInfo;
 import risiko.net.data.sendable.Signal;
 import risiko.net.data.sendable.TerritoriesLayout;
@@ -29,11 +30,8 @@ import it.unipr.ce.dsg.s2p.org.json.JSONObject;
 import it.unipr.ce.dsg.s2p.peer.NeighborPeerDescriptor;
 import it.unipr.ce.dsg.s2p.peer.Peer;
 import it.unipr.ce.dsg.s2p.peer.PeerDescriptor;
-import it.unipr.ce.dsg.s2p.peer.PeerListManager;
 import it.unipr.ce.dsg.s2p.sip.Address;
 
-//TODO muovere le variabili che rappresentano la logica di gioco in un
-//altra classe ?
 /**
  * When the server reaches the minimum number of players the game starts.
  * 
@@ -42,20 +40,20 @@ import it.unipr.ce.dsg.s2p.sip.Address;
  */
 public class Server extends Peer {
 
-	// UTILITIES
+	// // UTILITIES
 	private Log m_log;
 	private ServerConfiguration m_serverConfig;
 	private Gson m_jsonParser;
 	private GroovyClassLoader m_scriptLoader;
 
-	// SCRIPTING
+	// // SCRIPTING
 	private IRules m_rules;
 
-	// SYNCHRONIZATION
+	// // SYNCHRONIZATION
 	private int m_barrierCount = 0;
 	private List<Address> m_synchronizedClients;
 
-	// GAME LOGIC
+	// // GAME LOGIC
 	// Game state
 	private boolean m_gameStarted = false;
 	private TerritoriesLayout m_territories;
@@ -64,6 +62,7 @@ public class Server extends Peer {
 	// Turn
 	private PlayerInfo m_turnOwner;
 	private int m_turnCounter;
+	private boolean m_attackEnded;
 
 	public Server(String pathConfig, String key) {
 		super(pathConfig, key);
@@ -146,17 +145,19 @@ public class Server extends Peer {
 			if (signal.getSignalType() == SignalType.CONNECTION) {
 				// If there is another match refuse the connection
 				if (m_gameStarted) {
-					String response = m_jsonParser.toJson(new JSONMessage(new Signal(
-							SignalType.CONNECTION_REFUSED, peerDescriptor)));
+					String response = m_jsonParser.toJson(new JSONMessage(new Signal(SignalType.CONNECTION_REFUSED,
+							peerDescriptor)));
 					sendJSON(sender, response);
 				} else {
 					PeerDescriptor peerDesc = signal.getPeerDescriptor();
 					peerList.put(peerDesc.getKey(), new NeighborPeerDescriptor(peerDesc));
 					m_log.println("Peer " + peerDesc.getName() + " added to available peer list.");
 
-					String response = m_jsonParser.toJson(new JSONMessage(new Signal(
-							SignalType.CONNECTION_ACCEPTED, peerDescriptor)));
+					String response = m_jsonParser.toJson(new JSONMessage(new Signal(SignalType.CONNECTION_ACCEPTED,
+							peerDescriptor)));
 					sendJSON(sender, response);
+					// Increment the number of players
+					m_playerNumber++;
 
 					if (peerList.size() >= m_serverConfig.min_clients_number) {
 						m_log.println("Minimum clients number reached.");
@@ -165,15 +166,19 @@ public class Server extends Peer {
 			} else if (signal.getSignalType() == SignalType.DISCONNECTION) {
 				PeerDescriptor peerDesc = signal.getPeerDescriptor();
 				peerList.remove(peerDesc.getKey());
+				// Decrement the number of players
+				m_playerNumber--;
 				if (m_gameStarted) {
 					String response = m_jsonParser.toJson(new JSONMessage(new Signal(SignalType.END_GAME,
 							peerDescriptor)));
 					broadcastMessage(response);
 				}
 			} else if (signal.getSignalType() == SignalType.ACK) {
-				if (isClientSynchronized(new Address(sender))){
+				if (isClientSynchronized(new Address(sender))) {
 					signal(new Address(sender));
 				}
+			} else if (signal.getSignalType() == SignalType.ATTACK_PHASE_ENDED) {
+				m_attackEnded = true;
 			}
 		}
 
@@ -186,14 +191,13 @@ public class Server extends Peer {
 				Iterator<NeighborPeerDescriptor> iter = m_players.keySet().iterator();
 				while (iter.hasNext()) {
 					NeighborPeerDescriptor client = iter.next();
-					if (client.getAddress().equals( sender.getURL() ) ) {
+					if (client.getAddress().equals(sender.getURL())) {
 						player = m_players.get(client);
 					}
 				}
 
 				System.out.println("Updating territories of player: " + player.getColor());
-				// TODO controllare la validità della nuova disposizione
-				if (m_rules.checkTerritoriesLayout(layout, player)) {
+				if (m_rules.checkTerritoriesLayout(m_territories, layout, player)) {
 					updateTerritories(layout, player);
 					signal(new Address(sender));
 				}
@@ -202,11 +206,15 @@ public class Server extends Peer {
 			}
 		}
 
+		if (type.equals(AttackData.ATTACK_DATA_MSG)) {
+			// Da implementare
+		}
+
 	}
-	
-	private boolean isClientSynchronized(Address clientAddress){
+
+	private boolean isClientSynchronized(Address clientAddress) {
 		if (m_synchronizedClients.contains(clientAddress))
-			return false;		
+			return false;
 		return true;
 	}
 
@@ -223,21 +231,16 @@ public class Server extends Peer {
 	/**
 	 * This functions assumes that layout is a valid rappresentation of player
 	 * territories.
-	 * 
-	 * @param layout
-	 * @param info
 	 */
 	private void updateTerritories(TerritoriesLayout layout, PlayerInfo info) {
 		TerritoriesLayout terrs = layout.getSubset(info.getColor());
-		System.out.println(m_jsonParser.toJson(new JSONMessage(terrs)));
 		Iterator<Integer> iter = terrs.keySet().iterator();
 		while (iter.hasNext()) {
 			TerritoryInfo ter = terrs.get(iter.next());
-			System.out.println("ID = " + ter.getId() + " UNITS: " + ter.getUnitNumber());
 			m_territories.put(ter);
 		}
-		
-		m_log.println("NEW ONFIGURATION: " + m_jsonParser.toJson(new JSONMessage(m_territories)));
+
+		m_log.println("New territories configuration: " + m_jsonParser.toJson(new JSONMessage(m_territories)));
 
 	}
 
@@ -253,16 +256,12 @@ public class Server extends Peer {
 			if (color == PlayerColor.NONE)
 				continue;
 
-			// TODO configurare le unità in base al numero di partecipanti nelle
-			// regole
-			PlayerInfo info = new PlayerInfo(color, 30);
+			PlayerInfo info = new PlayerInfo(color, m_rules.getInitUnits(m_playerNumber));
 			NeighborPeerDescriptor peer = peerList.get((String) iter.next());
 			m_players.put(peer, info);
 
 			String msg = m_jsonParser.toJson(new JSONMessage(info));
 			sendJSON(new Address(peer.getAddress()), msg);
-
-			m_playerNumber++; // Get the number of player
 
 			m_log.println("Sended color " + info.getColor() + " to client " + peer.getName());
 		}
@@ -362,9 +361,13 @@ public class Server extends Peer {
 	private void assignTurn(PlayerInfo player) {
 		m_log.println("Turn assigned at player: " + player.getColor());
 		m_turnOwner = player;
-		// TODO settare on la logica di gioco il valore dell'incremento
-		m_turnOwner.incrementTotalUnit(5);
+
+		m_turnOwner.incrementTotalUnit(m_rules.getReinforcementUnits(m_territories));
 		broadcastMessage(m_jsonParser.toJson(new JSONMessage(m_turnOwner)));
+	}
+
+	public void attack() {
+		System.out.println("ATTACK PHASE - DA IMPLEMENTARE");
 	}
 
 	public void run() {
@@ -385,26 +388,32 @@ public class Server extends Peer {
 
 		boolean end = false;
 		// Turn loop
-		// while (!end) {
-		// Assign the turn at all the player in order.
-		Iterator<NeighborPeerDescriptor> players = m_players.keySet().iterator();
-		// while (players.hasNext()) {
+		while (!end) {
+			// Assign the turn at all the player in order.
+			Iterator<NeighborPeerDescriptor> players = m_players.keySet().iterator();
+			while (players.hasNext()) {
 
-		m_turnCounter++;
-		PlayerInfo player = m_players.get(players.next());
+				m_turnCounter++;
+				PlayerInfo player = m_players.get(players.next());
 
-		// Assign turn
-		assignTurn(player);
-		barrier();
-		m_log.println("Turn assigned.");
+				// Assign turn
+				assignTurn(player);
+				barrier();
+				m_log.println("Turn assigned.");
 
-		// Wait for unit disposal
-		barrier();
-		sendTerritoriesToClients();
-		m_log.println("New territories configuration sended to clients.");
+				// Wait for unit disposal
+				barrier();
+				sendTerritoriesToClients();
+				m_log.println("New territories configuration sended to clients.");
 
-		// }
-		// }
+				m_attackEnded = false;
+				while (!m_attackEnded) {
+					attack();
+				}
+				m_log.println("Attack phase finished.");
+
+			}
+		}
 
 	}
 

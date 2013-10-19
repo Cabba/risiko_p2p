@@ -1,11 +1,16 @@
 package risiko.net;
 
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.zoolu.tools.Log;
 
 import com.google.gson.Gson;
 
 import risiko.net.configuration.ClientConfiguration;
 import risiko.net.data.PlayerColor;
+import risiko.net.data.RisikoData;
 import risiko.net.data.SignalType;
 import risiko.net.data.TerritoryInfo;
 import risiko.net.data.sendable.AttackData;
@@ -13,7 +18,9 @@ import risiko.net.data.sendable.PlayerInfo;
 import risiko.net.data.sendable.Signal;
 import risiko.net.data.sendable.TerritoriesLayout;
 import risiko.net.gson.JSONMessage;
+import risiko.net.script.IRules;
 
+import groovy.lang.GroovyClassLoader;
 import it.unipr.ce.dsg.s2p.org.json.JSONException;
 import it.unipr.ce.dsg.s2p.org.json.JSONObject;
 import it.unipr.ce.dsg.s2p.peer.Peer;
@@ -21,12 +28,16 @@ import it.unipr.ce.dsg.s2p.sip.Address;
 
 public class Client extends Peer {
 
-	// UTILITIES
+	// / UTILITIES
 	private Log m_log;
 	private ClientConfiguration m_config;
 	private Gson m_jsonParser;
+	private GroovyClassLoader m_scriptLoader;
 
-	// GAME LOGIC
+	// / SCRIPTING
+	private IRules m_rules;
+
+	// / GAME LOGIC
 	private boolean m_gameStarted = false;
 	private boolean m_connected = false;
 	private PlayerInfo m_clientInfo;
@@ -34,7 +45,7 @@ public class Client extends Peer {
 	private boolean m_initialized = false;
 	private PlayerColor m_turnOwner;
 
-	// State management
+	// / State management
 	private ClientState m_state;
 	private boolean m_stateChanged = false;
 
@@ -42,6 +53,18 @@ public class Client extends Peer {
 		super(pathConfig, key);
 		// Configuration file
 		m_config = new ClientConfiguration(pathConfig);
+
+		// Load script
+		m_scriptLoader = new GroovyClassLoader();
+		Object script = null;
+		try {
+			Class clazz = m_scriptLoader.parseClass(new File(RisikoData.SCRIPT_NAME));
+			script = clazz.newInstance();
+		} catch (Exception e) {
+			new RuntimeException();
+			e.printStackTrace();
+		}
+		m_rules = (IRules) script;
 
 		// Create the log file
 		if (this.nodeConfig.log_path != null) {
@@ -182,6 +205,10 @@ public class Client extends Peer {
 		return m_clientInfo.getTotalUnit();
 	}
 
+	public int getUsedUnits() {
+		return m_territories.getPlayerUnit(m_clientInfo.getColor());
+	}
+
 	public PlayerColor getColor() {
 		return m_clientInfo.getColor();
 	}
@@ -192,6 +219,11 @@ public class Client extends Peer {
 
 	public boolean isClientTurn() {
 		return (m_turnOwner == m_clientInfo.getColor());
+	}
+
+	public void finishAttackPhase() {
+		String msg = m_jsonParser.toJson(new JSONMessage(new Signal(SignalType.ATTACK_PHASE_ENDED, peerDescriptor)));
+		sendJSON(new Address(m_config.server_address), msg);
 	}
 
 	public TerritoriesLayout getTerritoriesLayout() {
@@ -213,6 +245,20 @@ public class Client extends Peer {
 	public ClientState getState() {
 		m_stateChanged = false;
 		return m_state;
+	}
+
+	public boolean attack(int attackerID, int attackedID, int units) {
+		List<Integer> attacks = new ArrayList<Integer>();
+		for (int i = 0; i < units; ++i) {
+			attacks.add(m_rules.getDiceValue());
+		}
+		AttackData attack = new AttackData(attacks, attackerID, attackedID);
+		if( m_rules.isValidAttack(attackerID, attackedID, attack, m_territories)){
+			String msg = m_jsonParser.toJson(new JSONMessage(attack));
+			sendJSON(new Address(m_config.server_address), msg);
+			return true;
+		}
+		return false;
 	}
 
 	public boolean isStateChanged() {
