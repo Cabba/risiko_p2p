@@ -13,6 +13,7 @@ import org.zoolu.tools.Log;
 import com.google.gson.Gson;
 
 import risiko.net.configuration.ServerConfiguration;
+import risiko.net.data.AttackPhase;
 import risiko.net.data.PlayerColor;
 import risiko.net.data.RisikoData;
 import risiko.net.data.SignalType;
@@ -62,7 +63,8 @@ public class Server extends Peer {
 	// Turn
 	private PlayerInfo m_turnOwner;
 	private int m_turnCounter;
-	private boolean m_attackEnded;
+	private boolean m_attackPhaseEnded;
+	private boolean m_attackStarted;
 
 	public Server(String pathConfig, String key) {
 		super(pathConfig, key);
@@ -178,7 +180,7 @@ public class Server extends Peer {
 					signal(new Address(sender));
 				}
 			} else if (signal.getSignalType() == SignalType.ATTACK_PHASE_ENDED) {
-				m_attackEnded = true;
+				m_attackPhaseEnded = true;
 			}
 		}
 
@@ -207,7 +209,25 @@ public class Server extends Peer {
 		}
 
 		if (type.equals(AttackData.ATTACK_DATA_MSG)) {
-			// Da implementare
+			AttackData attack = m_jsonParser.fromJson(params, AttackData.class);
+			// Attack
+			if (m_rules.isValidAttack(attack, m_territories) && attack.getPhase() == AttackPhase.ATTACK) {
+				m_log.println("Received an attack.");
+				m_attackStarted = true;
+				// Resend the message at all the other players
+				broadcastMessage(msg.toString());
+			}
+			// Defence
+			else if (m_rules.isValidDefence(attack, m_territories) && attack.getPhase() == AttackPhase.DEFENCE) {
+				m_log.println("Received an defence.");
+				m_log.println("Attacker unit destroied: " + m_rules.attackerUnitsDestroyed(attack));
+				m_log.println("Defencer unit destroied: " + m_rules.attackedUnitsDestoyed(attack));
+				m_attackStarted = false;
+				// Resend the message at all the other players
+				broadcastMessage(msg.toString());
+				m_log.println("Wait for a syncronization.");
+			}
+			// TODO else not valid attack or defence!
 		}
 
 	}
@@ -367,7 +387,16 @@ public class Server extends Peer {
 	}
 
 	public void attack() {
-		System.out.println("ATTACK PHASE - DA IMPLEMENTARE");
+		if (m_attackStarted) {
+			while (m_attackStarted) {
+				System.out.println("Attack running");
+			}
+			barrier(); // Wait response
+			m_log.println("Sending new territories configuration.");
+			sendTerritoriesToClients();
+			barrier();
+			m_log.println("Attack ended!!");
+		}
 	}
 
 	public void run() {
@@ -406,8 +435,9 @@ public class Server extends Peer {
 				sendTerritoriesToClients();
 				m_log.println("New territories configuration sended to clients.");
 
-				m_attackEnded = false;
-				while (!m_attackEnded) {
+				m_attackPhaseEnded = false;
+				while (!m_attackPhaseEnded) {
+					System.out.println("ATTACK PHASE - DA IMPLEMENTARE");
 					attack();
 				}
 				m_log.println("Attack phase finished.");

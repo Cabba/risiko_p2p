@@ -10,9 +10,13 @@ public interface IRules {
 
 	public boolean checkTerritoriesLayout(TerritoriesLayout oldlayout, TerritoriesLayout newLayout, PlayerInfo owner);
 
-	public boolean isValidAttack(int ter1, int ter2, AttackData attack, TerritoriesLayout layout);
+	public boolean isValidAttack(AttackData attack, TerritoriesLayout layout);
 
-	public boolean isValidDefence(int ter1, int ter2, AttackData attack, TerritoriesLayout layout);
+	public boolean isValidDefence(AttackData attack, TerritoriesLayout layout);
+	
+	public int attackerUnitsDestroyed(AttackData attack);
+	
+	public int attackedUnitsDestoyed(AttackData attack);
 
 	public int getDiceValue();
 

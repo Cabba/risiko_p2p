@@ -25,6 +25,7 @@ import risiko.net.ClientState;
 import risiko.net.Server;
 import risiko.net.data.PlayerColor;
 import risiko.net.data.RisikoData;
+import risiko.net.data.sendable.AttackData;
 import risiko.net.data.sendable.TerritoriesLayout;
 
 public class TestUI {
@@ -248,6 +249,8 @@ public class TestUI {
 						ui.net.updateTerritoriesLayout();
 					} else if (ui.net.getState() == ClientState.END_REINFORCEMENT) {
 						ui.net.finishAttackPhase();
+					}else if(ui.net.getState() == ClientState.NEW_DISPOSITION){
+						ui.net.finishAttackPhase();
 					}
 				}
 			}
@@ -408,7 +411,22 @@ public class TestUI {
 					client.labelMsg.setText(client.net.getTurnOwner() + " is turn owner (ATTACK PHASE).");
 				}
 			}
+			
+			if( state == ClientState.ATTACK_PHASE ){
+				AttackData attack = client.net.getCurrentAttack();
+				client.labelMsg.setText("Territory " + attack.getAttackedID() + " is under attack from " + attack.getAttackerID());
+			}
 
+			if(state == ClientState.AFTER_ATTACK){
+				client.labelMsg.setText("Attack ended!");
+				client.net.synchronize();
+			}
+			
+			if(state == ClientState.NEW_DISPOSITION){
+				updateGrid(client);
+				client.net.synchronize();
+			}
+			
 			if (state == ClientState.GAME_DISCONNECTION) {
 				reset();
 			}
