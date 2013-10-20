@@ -51,8 +51,8 @@ public class Server extends Peer {
 	private IRules m_rules;
 
 	// // SYNCHRONIZATION
-	private int m_barrierCount = 0;
-	private List<Address> m_synchronizedClients;
+	volatile private int m_barrierCount = 0;
+	volatile private List<Address> m_synchronizedClients;
 
 	// // GAME LOGIC
 	// Game state
@@ -63,8 +63,9 @@ public class Server extends Peer {
 	// Turn
 	private PlayerInfo m_turnOwner;
 	private int m_turnCounter;
-	private boolean m_attackPhaseEnded;
-	private boolean m_attackStarted;
+	// Looping variable
+	volatile private boolean m_attackPhaseEnded;
+	volatile private boolean m_attackStarted = false;
 
 	public Server(String pathConfig, String key) {
 		super(pathConfig, key);
@@ -213,21 +214,36 @@ public class Server extends Peer {
 			// Attack
 			if (m_rules.isValidAttack(attack, m_territories) && attack.getPhase() == AttackPhase.ATTACK) {
 				m_log.println("Received an attack.");
-				m_attackStarted = true;
 				// Resend the message at all the other players
 				broadcastMessage(msg.toString());
+				m_attackStarted = true;
 			}
 			// Defence
 			else if (m_rules.isValidDefence(attack, m_territories) && attack.getPhase() == AttackPhase.DEFENCE) {
 				m_log.println("Received an defence.");
 				m_log.println("Attacker unit destroied: " + m_rules.attackerUnitsDestroyed(attack));
-				m_log.println("Defencer unit destroied: " + m_rules.attackedUnitsDestoyed(attack));
-				m_attackStarted = false;
+				m_log.println("Defencer unit destroied: " + m_rules.attackedUnitsDestroyed(attack));
+
+				int attDest = m_rules.attackerUnitsDestroyed(attack);
+				int defDest = m_rules.attackedUnitsDestroyed(attack);
+				int attUnits = m_territories.get(attack.getAttackerID()).getUnitNumber();
+				int defUnits = m_territories.get(attack.getAttackedID()).getUnitNumber();
+
+				if (attUnits - attDest == 0) {
+					// Difensore conquista
+				} else if (defUnits - defDest == 0) {
+					// Attacccante conquista
+				} else {
+					m_log.println("Updated territories.");
+					m_territories.get(attack.getAttackerID()).setUnitNumber(attUnits - attDest);
+					m_territories.get(attack.getAttackedID()).setUnitNumber(defUnits - defDest);
+				}
 				// Resend the message at all the other players
 				broadcastMessage(msg.toString());
 				m_log.println("Wait for a syncronization.");
+				m_attackStarted = false;
 			}
-			// TODO else not valid attack or defence!
+			// If not valid ignore it
 		}
 
 	}
@@ -329,10 +345,6 @@ public class Server extends Peer {
 		broadcastMessage(msg);
 	}
 
-	/**
-	 * A game can start if there are enough player and there are no other match
-	 * occurring.
-	 */
 	private boolean gameCanStart() {
 		if (m_gameStarted)
 			return false;
@@ -367,13 +379,11 @@ public class Server extends Peer {
 		sendMessage(toAddress, getAddress(), msg, "application/json");
 	}
 
-	/**
-	 * Wait until all the peer send an ACK message.
-	 */
 	private void barrier() {
 		while (peerList.size() != m_barrierCount) {
 			// Do nothing
 		}
+		m_log.println("Exit from the barrier.");
 		resetClientSynchronization();
 		m_barrierCount = 0;
 	}
@@ -382,14 +392,14 @@ public class Server extends Peer {
 		m_log.println("Turn assigned at player: " + player.getColor());
 		m_turnOwner = player;
 
-		m_turnOwner.incrementTotalUnit(m_rules.getReinforcementUnits(m_territories));
+		m_turnOwner.incrementTotalUnit(m_rules.getReinforcementUnits(m_turnCounter, m_territories));
 		broadcastMessage(m_jsonParser.toJson(new JSONMessage(m_turnOwner)));
 	}
 
 	public void attack() {
 		if (m_attackStarted) {
 			while (m_attackStarted) {
-				System.out.println("Attack running");
+				// Wait
 			}
 			barrier(); // Wait response
 			m_log.println("Sending new territories configuration.");
@@ -437,7 +447,6 @@ public class Server extends Peer {
 
 				m_attackPhaseEnded = false;
 				while (!m_attackPhaseEnded) {
-					System.out.println("ATTACK PHASE - DA IMPLEMENTARE");
 					attack();
 				}
 				m_log.println("Attack phase finished.");

@@ -13,15 +13,15 @@ public interface IRules {
 	public boolean isValidAttack(AttackData attack, TerritoriesLayout layout);
 
 	public boolean isValidDefence(AttackData attack, TerritoriesLayout layout);
+
+	public int attackedUnitsDestroyed(AttackData attack);
 	
 	public int attackerUnitsDestroyed(AttackData attack);
 	
-	public int attackedUnitsDestoyed(AttackData attack);
-
 	public int getDiceValue();
 
 	public int getInitUnits(int playerNumber);
 
-	public int getReinforcementUnits(TerritoriesLayout layout);
+	public int getReinforcementUnits(int turnCounter, TerritoriesLayout layout);
 
 }

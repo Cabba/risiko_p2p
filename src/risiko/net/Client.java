@@ -162,36 +162,37 @@ public class Client extends Peer {
 
 			else if (m_state == ClientState.UNITS_POSITIONED)
 				setState(ClientState.END_REINFORCEMENT);
-			
-			else if(m_state == ClientState.AFTER_ATTACK){
+
+			else if (m_state == ClientState.AFTER_ATTACK) {
 				setState(ClientState.NEW_DISPOSITION);
 			}
 		}
 
 		if (type.equals(AttackData.ATTACK_DATA_MSG)) {
-			if (m_state == ClientState.END_REINFORCEMENT || m_state == ClientState.ATTACK_PHASE 
-					|| m_state == ClientState.AFTER_ATTACK) {
+			if (m_state == ClientState.END_REINFORCEMENT || m_state == ClientState.ATTACK_PHASE
+					|| m_state == ClientState.NEW_DISPOSITION) {
 				AttackData attack = m_jsonParser.fromJson(params, AttackData.class);
 				TerritoryInfo attackedTer = m_territories.get(attack.getAttackedID());
 				TerritoryInfo attackerTer = m_territories.get(attack.getAttackerID());
 				m_currentAttack = attack;
-				
-				if( attack.getPhase() == AttackPhase.ATTACK) setState(ClientState.ATTACK_PHASE);
-				
+
+				if (attack.getPhase() == AttackPhase.ATTACK)
+					setState(ClientState.ATTACK_PHASE);
+
 				// If client is under attack send the defence
-				if (attackedTer.getOwner() == getColor() && attack.getPhase() == AttackPhase.ATTACK ) {
+				if (attackedTer.getOwner() == getColor() && attack.getPhase() == AttackPhase.ATTACK) {
 					m_log.println("I'm under attack!!");
 					List<Integer> defence = new ArrayList<Integer>();
-					int n = (attackedTer.getUnitNumber() >= attack.getAttackingUnits() ? attack.getAttackingUnits() : attackedTer
-							.getUnitNumber());
-					for(int i = 0; i < n; ++i)
+					int n = (attackedTer.getUnitNumber() >= attack.getAttackingUnits() ? attack.getAttackingUnits()
+							: attackedTer.getUnitNumber());
+					for (int i = 0; i < n; ++i)
 						defence.add(m_rules.getDiceValue());
 					attack.setDefenceValues(defence);
 					String response = m_jsonParser.toJson(new JSONMessage(attack));
 					sendJSON(new Address(m_config.server_address), response);
 				}
-				
-				if(attack.getPhase() == AttackPhase.DEFENCE){
+
+				if (attack.getPhase() == AttackPhase.DEFENCE) {
 					setState(ClientState.AFTER_ATTACK);
 				}
 			}
@@ -278,7 +279,7 @@ public class Client extends Peer {
 	}
 
 	public AttackData getCurrentAttack() {
-		if (m_state == ClientState.ATTACK_PHASE) {
+		if (m_state == ClientState.ATTACK_PHASE || m_state == ClientState.AFTER_ATTACK) {
 			return m_currentAttack;
 		}
 		return null;

@@ -12,10 +12,10 @@ import risiko.net.data.sendable.AttackData;
 
 public class Rules implements IRules{
 
-	Random random;
+	private Random m_random;
 
 	public Rules(){
-		random = new Random();
+		m_random = new Random();
 	}
 
 	public boolean checkTerritoriesLayout(TerritoriesLayout oldlayout, TerritoriesLayout newLayout, PlayerInfo owner){
@@ -24,8 +24,17 @@ public class Rules implements IRules{
 	}
 	
 	public boolean isValidAttack(AttackData attack, TerritoriesLayout layout){
-		println "IS A VALID ATTACK - DA IMPLEMENTARE";
-		return true;
+		int attID = attack.getAttackerID();
+		int defID = attack.getAttackedID();
+		int attUnits = attack.getAttackValues().size();
+
+		// Sufficient units
+		if( layout.get(attID).getUnitNumber() - attUnits < 1 ) return false;
+		
+		// Rules of proximity
+		if( attID == defID + 1 || attID == defID - 1) return true; 
+
+		return false;
 	}
 
 	public boolean isValidDefence(AttackData attack, TerritoriesLayout layout){
@@ -34,7 +43,6 @@ public class Rules implements IRules{
 	}
 
 	public int attackerUnitsDestroyed(AttackData attack){
-		println "Attack evaluation";
 		List<Integer> atta = new ArrayList<Integer>(attack.getAttackValues());
 		List<Integer> defe = new ArrayList<Integer>(attack.getDefenceValues());
 
@@ -43,25 +51,20 @@ public class Rules implements IRules{
 		for(int i = 0; i < iterations; ++i ){
 			Integer maxAttack = findMaxAndPush(atta);
 			Integer maxDefence = findMaxAndPush(defe);
-			println "Comparing " + maxDefence + " with " + maxAttack;
 			if( maxDefence >= maxAttack ) counter++;
 		}
 		return counter;
 	}
-	
-	public int attackedUnitsDestoyed(AttackData attack){
-		println "Defence evaluation";
+
+	public int attackedUnitsDestroyed(AttackData attack){
 		List<Integer> atta = new ArrayList<Integer>(attack.getAttackValues());
 		List<Integer> defe = new ArrayList<Integer>(attack.getDefenceValues());
-
-		println "attack size = " + atta.size() + " defence size = " + defe.size();
 
 		int counter = 0;
 		int iterations = defe.size() <= atta.size() ? defe.size() : atta.size();
 		for(int i = 0; i < iterations; ++i ){
 			Integer maxAttack = findMaxAndPush(atta);
 			Integer maxDefence = findMaxAndPush(defe);
-			println "Comparing " + maxDefence + " with " + maxAttack;
 			if( maxAttack > maxDefence ) counter++;
 		}
 		return counter;
@@ -79,10 +82,9 @@ public class Rules implements IRules{
 		list.remove(index);
 		return max;
 	}
-
 	
 	public int getDiceValue(){
-		return random.nextInt(5) + 1;
+		return m_random.nextInt(5) + 1;
 	}
 
 	public int getInitUnits(int playerNumber){
@@ -99,7 +101,8 @@ public class Rules implements IRules{
 		return 0;
 	}
 	
-	public int getReinforcementUnits(TerritoriesLayout layout){
-		return 0;
+	public int getReinforcementUnits(int turnCounter, TerritoriesLayout layout){
+		if( turnCounter == 1 ) return 0;
+		else return 1;
 	}
 }

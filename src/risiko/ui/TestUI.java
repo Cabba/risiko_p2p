@@ -1,5 +1,8 @@
 package risiko.ui;
 
+import groovy.lang.GroovyClassLoader;
+
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -25,8 +28,10 @@ import risiko.net.ClientState;
 import risiko.net.Server;
 import risiko.net.data.PlayerColor;
 import risiko.net.data.RisikoData;
+import risiko.net.data.TerritoryInfo;
 import risiko.net.data.sendable.AttackData;
 import risiko.net.data.sendable.TerritoriesLayout;
+import risiko.net.script.IRules;
 
 public class TestUI {
 
@@ -94,8 +99,23 @@ public class TestUI {
 
 	private ServerUI m_server;
 
+	private GroovyClassLoader m_scriptLoader;
+	private IRules m_rules;
+
 	public TestUI() {
 		m_display = new Display();
+
+		// Load script
+		m_scriptLoader = new GroovyClassLoader();
+		Object script = null;
+		try {
+			Class clazz = m_scriptLoader.parseClass(new File(RisikoData.SCRIPT_NAME));
+			script = clazz.newInstance();
+		} catch (Exception e) {
+			new RuntimeException();
+			e.printStackTrace();
+		}
+		m_rules = (IRules) script;
 	}
 
 	public void build() {
@@ -227,10 +247,9 @@ public class TestUI {
 				int attacker = Integer.parseInt(ui.spinnerAttacker.getText());
 				int attacked = Integer.parseInt(ui.spinnerAttacked.getText());
 				int units = Integer.parseInt(ui.spinnerAttackingUnits.getText());
-				if( ui.net.attack(attacker, attacked, units) ){
+				if (ui.net.attack(attacker, attacked, units)) {
 					ui.buttonAttack.setText("Attack sended.");
-				}
-				else{
+				} else {
 					ui.buttonAttack.setText("Invalid attack. Retry");
 				}
 			}
@@ -249,7 +268,7 @@ public class TestUI {
 						ui.net.updateTerritoriesLayout();
 					} else if (ui.net.getState() == ClientState.END_REINFORCEMENT) {
 						ui.net.finishAttackPhase();
-					}else if(ui.net.getState() == ClientState.NEW_DISPOSITION){
+					} else if (ui.net.getState() == ClientState.NEW_DISPOSITION) {
 						ui.net.finishAttackPhase();
 					}
 				}
@@ -389,6 +408,12 @@ public class TestUI {
 				client.buttonSync.setText("Units disposed.");
 				client.buttonSync.setEnabled(true);
 
+				client.buttonAttack.setText("-");
+				client.buttonAttack.setEnabled(false);
+				client.labelAttacked.setText("-");
+				client.labelAttacker.setText("-");
+				client.labelAttackingUnits.setText("-");
+
 				client.net.synchronize();
 			}
 
@@ -411,22 +436,29 @@ public class TestUI {
 					client.labelMsg.setText(client.net.getTurnOwner() + " is turn owner (ATTACK PHASE).");
 				}
 			}
-			
-			if( state == ClientState.ATTACK_PHASE ){
+
+			if (state == ClientState.ATTACK_PHASE) {
 				AttackData attack = client.net.getCurrentAttack();
-				client.labelMsg.setText("Territory " + attack.getAttackedID() + " is under attack from " + attack.getAttackerID());
+				client.labelMsg.setText("Territory " + attack.getAttackedID() + " is under attack from "
+						+ attack.getAttackerID());
 			}
 
-			if(state == ClientState.AFTER_ATTACK){
-				client.labelMsg.setText("Attack ended!");
+			if (state == ClientState.AFTER_ATTACK) {
+				AttackData attack = client.net.getCurrentAttack();
+
+				client.labelMsg.setText("Attack resolved. Death from " + attack.getAttackerID() + " are "
+						+ m_rules.attackerUnitsDestroyed(attack) + ". Death from " + attack.getAttackedID() + " are "
+						+ m_rules.attackedUnitsDestroyed(attack));
 				client.net.synchronize();
 			}
-			
-			if(state == ClientState.NEW_DISPOSITION){
+
+			if (state == ClientState.NEW_DISPOSITION) {
+				client.buttonAttack.setText("Attack completed.");
+
 				updateGrid(client);
 				client.net.synchronize();
 			}
-			
+
 			if (state == ClientState.GAME_DISCONNECTION) {
 				reset();
 			}

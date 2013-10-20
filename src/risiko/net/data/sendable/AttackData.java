@@ -1,5 +1,6 @@
 package risiko.net.data.sendable;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import risiko.net.data.AttackPhase;
@@ -14,6 +15,9 @@ public class AttackData implements ISendable{
 	private int m_toTerritory;
 	
 	private AttackPhase m_phase;
+	
+	private int m_attackDeathUnits;
+	private int m_defenceDeathUnits;
 	
 	public static final String ATTACK_DATA_MSG = "attack_data";
 	
