@@ -1,0 +1,11 @@
+package risiko.net;
+
+public enum ServerState {
+	GAME_NOT_START,
+	CONFIGURATION,
+	TURN_ASSIGNAMENT,
+	REINFORCEMENT,
+	ATTACK,
+	ATTACK_STARTED,
+	END
+}

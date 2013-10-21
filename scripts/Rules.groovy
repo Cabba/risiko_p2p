@@ -8,6 +8,7 @@ import risiko.net.script.IRules;
 import risiko.net.data.sendable.TerritoriesLayout;
 import risiko.net.data.TerritoryInfo;
 import risiko.net.data.sendable.PlayerInfo;
+import risiko.net.data.PlayerColor;
 import risiko.net.data.sendable.AttackData;
 
 public class Rules implements IRules{
@@ -16,6 +17,10 @@ public class Rules implements IRules{
 
 	public Rules(){
 		m_random = new Random();
+	}
+
+	public PlayerColor getWinner(TerritoriesLayout layout){
+		return PlayerColor.RED;
 	}
 
 	public boolean checkTerritoriesLayout(TerritoriesLayout oldlayout, TerritoriesLayout newLayout, PlayerInfo owner){

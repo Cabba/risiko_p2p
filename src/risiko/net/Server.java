@@ -1,3 +1,7 @@
+/**
+ * @author Federico Cabassi
+ */
+
 package risiko.net;
 
 import java.io.File;
@@ -21,6 +25,7 @@ import risiko.net.data.sendable.AttackData;
 import risiko.net.data.sendable.PlayerInfo;
 import risiko.net.data.sendable.Signal;
 import risiko.net.data.sendable.TerritoriesLayout;
+import risiko.net.data.sendable.Winner;
 import risiko.net.gson.JSONMessage;
 import risiko.net.script.IRules;
 
@@ -54,16 +59,14 @@ public class Server extends Peer {
 
 	// // GAME LOGIC
 	// Game state
-	private boolean m_gameStarted = false;
 	private int m_playerNumber;
 	private TerritoriesLayout m_territories;
 	private Map<NeighborPeerDescriptor, PlayerInfo> m_players;
 	// Turn
 	private PlayerInfo m_turnOwner;
 	private int m_turnCounter;
-	// Looping variable
-	volatile private boolean m_attackPhaseEnded;
-	volatile private boolean m_attackStarted = false;
+
+	volatile private ServerState m_state;
 
 	public Server(String pathConfig, String key) {
 		super(pathConfig, key);
@@ -141,8 +144,8 @@ public class Server extends Peer {
 			Signal signal = m_jsonParser.fromJson(params, Signal.class);
 
 			if (signal.getSignalType() == SignalType.CONNECTION) {
-				// If there is another match refuse the connection
-				if (m_gameStarted) {
+				// If game is started refuse client connection
+				if (m_state != ServerState.GAME_NOT_START) {
 					String response = m_jsonParser.toJson(new JSONMessage(new Signal(SignalType.CONNECTION_REFUSED,
 							peerDescriptor)));
 					sendJSON(sender, response);
@@ -166,22 +169,23 @@ public class Server extends Peer {
 				peerList.remove(peerDesc.getKey());
 				// Decrement the number of players
 				m_playerNumber--;
-				if (m_gameStarted) {
+				if (m_state != ServerState.GAME_NOT_START) {
 					String response = m_jsonParser.toJson(new JSONMessage(new Signal(SignalType.END_GAME,
 							peerDescriptor)));
 					broadcastMessage(response);
 				}
 			} else if (signal.getSignalType() == SignalType.ACK) {
-				if (isClientSynchronized(new Address(sender))) {
+				if (!isClientSynchronized(new Address(sender))) {
 					signal(new Address(sender));
 				}
 			} else if (signal.getSignalType() == SignalType.ATTACK_PHASE_ENDED) {
-				m_attackPhaseEnded = true;
+				if (m_state == ServerState.ATTACK)
+					setState(ServerState.REINFORCEMENT);
 			}
 		}
 
-		if (type.equals(TerritoriesLayout.TERRITORIES_LAYOUT_MSG)) {
-			if (isClientSynchronized(new Address(sender))) {
+		if (type.equals(TerritoriesLayout.TERRITORIES_LAYOUT_MSG) && m_state == ServerState.REINFORCEMENT) {
+			if (!isClientSynchronized(new Address(sender))) {
 				TerritoriesLayout layout = m_jsonParser.fromJson(params, TerritoriesLayout.class);
 
 				// Get player from address
@@ -194,7 +198,7 @@ public class Server extends Peer {
 					}
 				}
 
-				System.out.println("Updating territories of player: " + player.getColor());
+				m_log.println("Updating territories of player: " + player.getColor());
 				if (m_rules.checkTerritoriesLayout(m_territories, layout, player)) {
 					updateTerritories(layout, player);
 					signal(new Address(sender));
@@ -207,27 +211,37 @@ public class Server extends Peer {
 		if (type.equals(AttackData.ATTACK_DATA_MSG)) {
 			AttackData attack = m_jsonParser.fromJson(params, AttackData.class);
 			// Attack
+			// TODO check if the sender is the attacker
 			if (m_rules.isValidAttack(attack, m_territories) && attack.getPhase() == AttackPhase.ATTACK) {
-				m_log.println("Received an attack.");
+				m_log.println("Attack data received.");
 				// Resend the message at all the other players
 				broadcastMessage(msg.toString());
-				m_attackStarted = true;
+				setState(ServerState.ATTACK_STARTED);
 			}
 			// Defence
-			else if (m_rules.isValidDefence(attack, m_territories) && attack.getPhase() == AttackPhase.DEFENCE) {
-				m_log.println("Received an defence.");
-				m_log.println("Attacker unit destroied: " + m_rules.attackerUnitsDestroyed(attack));
-				m_log.println("Defencer unit destroied: " + m_rules.attackedUnitsDestroyed(attack));
+			// TODO check if the sender is the defencer
+			else if (m_rules.isValidDefence(attack, m_territories) && attack.getPhase() == AttackPhase.DEFENCE
+					&& m_state == ServerState.ATTACK_STARTED) {
+				m_log.println("Defence data received.");
 
 				int attDest = m_rules.attackerUnitsDestroyed(attack);
 				int defDest = m_rules.attackedUnitsDestroyed(attack);
 				int attUnits = m_territories.get(attack.getAttackerID()).getUnitNumber();
 				int defUnits = m_territories.get(attack.getAttackedID()).getUnitNumber();
 
-				if (attUnits - attDest == 0) {
-					// Difensore conquista
-				} else if (defUnits - defDest == 0) {
-					// Attacccante conquista
+				m_log.println("Attacker unit destroied: " + attDest);
+				m_log.println("Defencer unit destroied: " + defDest);
+
+				if (defUnits - defDest == 0) {
+					// Attacker wins
+					TerritoryInfo attackedTerr = m_territories.get(attack.getAttackedID());
+					TerritoryInfo attackerTerr = m_territories.get(attack.getAttackerID());
+					PlayerColor attacker = m_territories.get(attack.getAttackerID()).getOwner();
+
+					// Set the new owner and put one unit in the new territory
+					attackedTerr.setOwner(attacker);
+					attackedTerr.setUnitNumber(1);
+					attackerTerr.setUnitNumber(attackerTerr.getUnitNumber() - 1);
 				} else {
 					m_log.println("Updated territories.");
 					m_territories.get(attack.getAttackerID()).setUnitNumber(attUnits - attDest);
@@ -236,7 +250,7 @@ public class Server extends Peer {
 				// Resend the message at all the other players
 				broadcastMessage(msg.toString());
 				m_log.println("Wait for a syncronization.");
-				m_attackStarted = false;
+				m_state = ServerState.ATTACK;
 			}
 			// If not valid ignore it
 		}
@@ -260,7 +274,7 @@ public class Server extends Peer {
 		while (peerList.size() != m_barrierCount) {
 			// Do nothing
 		}
-		m_log.println("Exit from the barrier.");
+		m_log.println("Synchronization occurred.");
 		resetClientSynchronization();
 		m_barrierCount = 0;
 	}
@@ -273,8 +287,8 @@ public class Server extends Peer {
 	 */
 	private boolean isClientSynchronized(Address clientAddress) {
 		if (m_synchronizedClients.contains(clientAddress))
-			return false;
-		return true;
+			return true;
+		return false;
 	}
 
 	/**
@@ -353,6 +367,8 @@ public class Server extends Peer {
 		int territoryForPlayer = size / m_playerNumber;
 		int remainder = size % m_playerNumber;
 
+		m_log.println("Generating the territories layout:");
+
 		Iterator<NeighborPeerDescriptor> peer = m_players.keySet().iterator();
 		while (peer.hasNext()) {
 			PlayerColor owner = m_players.get(peer.next()).getColor();
@@ -392,11 +408,10 @@ public class Server extends Peer {
 	 * @return True if game can start
 	 */
 	private boolean gameCanStart() {
-		if (m_gameStarted)
+		if (m_state != ServerState.GAME_NOT_START)
 			return false;
 		if (peerList.size() >= m_rules.getRequiredPlayerNumber()) {
 			m_log.println("The game can start");
-			System.out.println("The game can start");
 			return true;
 		} else
 			return false;
@@ -408,7 +423,6 @@ public class Server extends Peer {
 	private void startGame() {
 		String msg = m_jsonParser.toJson(new JSONMessage(new Signal(SignalType.START_GAME, peerDescriptor)));
 		broadcastMessage(msg);
-		m_gameStarted = true;
 	}
 
 	/**
@@ -430,8 +444,8 @@ public class Server extends Peer {
 	 * attack phase the function return.
 	 */
 	private void attack() {
-		if (m_attackStarted) {
-			while (m_attackStarted) {
+		if (m_state == ServerState.ATTACK_STARTED) {
+			while (m_state == ServerState.ATTACK_STARTED) {
 				// Wait
 			}
 			barrier(); // Wait response
@@ -442,15 +456,33 @@ public class Server extends Peer {
 		}
 	}
 
+	private void terminateGame(PlayerColor winner) {
+		String msg = m_jsonParser.toJson(new JSONMessage<Winner>(new Winner(winner)));
+		broadcastMessage(msg);
+	}
+
+	private void setState(ServerState newState) {
+		m_log.println("State changed from " + m_state + " to " + newState + ".");
+		m_state = newState;
+	}
+
+	public void terminate() {
+		setState(ServerState.END);
+		this.halt();
+	}
+
 	/**
 	 * Enter in the server loop. This function is blocking for all the game
 	 * length, the function return only if the game is over.
 	 */
 	public void run() {
+		setState(ServerState.GAME_NOT_START);
+
 		// Initialization
 		while (!gameCanStart()) {
 		} // Loop until game can start
 
+		setState(ServerState.CONFIGURATION);
 		m_log.println("Game is started");
 		startGame();
 
@@ -464,26 +496,35 @@ public class Server extends Peer {
 
 		boolean end = false;
 		// Turn loop
-		while (!end) {
+		while (m_state != ServerState.END) {
 			// Assign the turn at all the player in order.
 			Iterator<NeighborPeerDescriptor> players = m_players.keySet().iterator();
 			while (players.hasNext()) {
 
+				PlayerColor winner = m_rules.getWinner(m_territories);
+				if (winner != PlayerColor.NONE) {
+					terminateGame(winner);
+					return;
+				}
+
 				m_turnCounter++;
 				PlayerInfo player = m_players.get(players.next());
 
+				setState(ServerState.TURN_ASSIGNAMENT);
 				// Assign turn
 				assignTurn(player);
 				barrier();
 				m_log.println("Turn assigned.");
 
+				setState(ServerState.REINFORCEMENT);
 				// Wait for unit disposal
 				barrier();
 				sendTerritoriesToClients();
 				m_log.println("New territories configuration sended to clients.");
 
-				m_attackPhaseEnded = false;
-				while (!m_attackPhaseEnded) {
+				setState(ServerState.ATTACK);
+				// m_attackPhaseEnded = false;
+				while (m_state == ServerState.ATTACK || m_state == ServerState.ATTACK_STARTED) {
 					attack();
 				}
 				m_log.println("Attack phase finished.");

@@ -18,6 +18,7 @@ import risiko.net.data.sendable.AttackData;
 import risiko.net.data.sendable.PlayerInfo;
 import risiko.net.data.sendable.Signal;
 import risiko.net.data.sendable.TerritoriesLayout;
+import risiko.net.data.sendable.Winner;
 import risiko.net.gson.JSONMessage;
 import risiko.net.script.IRules;
 
@@ -47,7 +48,7 @@ public class Client extends Peer {
 	private PlayerColor m_turnOwner;
 	private AttackData m_currentAttack;
 
-	/// State management
+	// / State management
 
 	volatile private ClientState m_state;
 	volatile private boolean m_stateChanged;
@@ -197,6 +198,12 @@ public class Client extends Peer {
 					setState(ClientState.AFTER_ATTACK);
 				}
 			}
+		} else if (type.equals(Winner.WINNER_MSG)) {
+			Winner winner = m_jsonParser.fromJson(params, Winner.class);
+			if (winner.getWinner() == getColor())
+				setState(ClientState.WIN);
+			else
+				setState(ClientState.LOSE);
 		}
 
 	}

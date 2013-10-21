@@ -95,6 +95,8 @@ public class TestUI {
 		public Button startServer;
 
 		public Thread serverThread;
+		public boolean isStarted;
+		public ServerThread m_thread;
 	}
 
 	private ServerUI m_server;
@@ -332,12 +334,18 @@ public class TestUI {
 				System.out.println("Starting the server ...");
 				// Running the server thread ...
 				ui.serverThread = new Thread() {
+					public Server server;
+
 					public void run() {
-						Server server = new Server("config/server.config", "1");
+						server = new Server("config/server.config", "1");
 						server.run();
 					}
+
 				};
-				ui.serverThread.start();
+				//ui.serverThread.start();
+				ui.m_thread = new ServerThread("config/server.config", "1");
+				ui.m_thread.start();
+				ui.isStarted = true;
 				ui.startServer.setText("Running..");
 				ui.startServer.setEnabled(false);
 			}
@@ -459,6 +467,14 @@ public class TestUI {
 				client.net.synchronize();
 			}
 
+			if (state == ClientState.LOSE) {
+				client.labelMsg.setText("You lose!!");
+			}
+
+			if (state == ClientState.WIN) {
+				client.labelMsg.setText("You win!");
+			}
+
 			if (state == ClientState.GAME_DISCONNECTION) {
 				reset();
 			}
@@ -479,10 +495,13 @@ public class TestUI {
 			int id = territories.get(key).getId();
 
 			button.setText(mapButtonMessage(id, owner, unitNumber));
+			if (client.net.getColor() != owner)
+				button.setEnabled(false);
+			else
+				button.setEnabled(true);
 		}
 	}
 
-	// TODO se viene usato solo in una funzione spostarla all'interno
 	private String mapButtonMessage(int id, PlayerColor color, int unitNumber) {
 		return "ID: " + id + " COLOR: " + color + " UNIT: " + unitNumber;
 	}
@@ -493,6 +512,17 @@ public class TestUI {
 
 	private void reset() {
 		System.out.println("RESET - DA IMPLEMENTARE");
+	}
+
+	private void clear() {
+		System.out.println("Freeing the ports...");
+		for (int i = 0; i < m_clients.size(); ++i) {
+			m_clients.get(i).net.halt();
+		}
+		m_server.m_thread.terminate();
+		// TODO Change stop function
+		m_server.m_thread.stop();
+		
 	}
 
 	public static void main(String[] args) {
@@ -506,6 +536,7 @@ public class TestUI {
 
 		ui.update();
 
+		ui.clear();
 	}
 
 }
