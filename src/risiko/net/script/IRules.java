@@ -23,5 +23,7 @@ public interface IRules {
 	public int getInitUnits(int playerNumber);
 
 	public int getReinforcementUnits(int turnCounter, TerritoriesLayout layout);
+	
+	public int getRequiredPlayerNumber();
 
 }

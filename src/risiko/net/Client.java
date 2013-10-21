@@ -47,9 +47,10 @@ public class Client extends Peer {
 	private PlayerColor m_turnOwner;
 	private AttackData m_currentAttack;
 
-	// / State management
-	private ClientState m_state;
-	private boolean m_stateChanged = false;
+	/// State management
+
+	volatile private ClientState m_state;
+	volatile private boolean m_stateChanged;
 
 	public Client(String pathConfig, String key) {
 		super(pathConfig, key);
@@ -133,20 +134,20 @@ public class Client extends Peer {
 		// If message is used during the initialization phase specifies
 		// the available number of unit at the beginning and the player
 		// color.
-		if (type.equals(PlayerInfo.PLAYER_COLOR_MSG)) {
+		else if (type.equals(PlayerInfo.PLAYER_COLOR_MSG)) {
 			PlayerInfo player = m_jsonParser.fromJson(params, PlayerInfo.class);
 
 			if (m_initialized == false) {
 				m_clientInfo = player;
 				m_log.println("Assigned color to client is: " + m_clientInfo.getColor() + ". Available unit are: "
-						+ m_clientInfo.getTotalUnit());
+						+ m_clientInfo.getTotalUnits());
 				setState(ClientState.CONFIGURED);
 				m_initialized = true;
 			} else {
 				m_turnOwner = player.getColor();
 				if (isClientTurn()) {
 					m_log.println("It's my turn ...");
-					m_clientInfo.setTotalUnit(player.getTotalUnit());
+					m_clientInfo.setTotalUnit(player.getTotalUnits());
 				} else {
 					m_log.println("It's player " + m_turnOwner + " turn.");
 				}
@@ -154,21 +155,20 @@ public class Client extends Peer {
 			}
 		}
 
-		if (type.equals(TerritoriesLayout.TERRITORIES_LAYOUT_MSG)) {
+		else if (type.equals(TerritoriesLayout.TERRITORIES_LAYOUT_MSG)) {
 			m_territories = m_jsonParser.fromJson(params, TerritoriesLayout.class);
 
-			if (m_state == ClientState.CONFIGURED)
+			if (m_state == ClientState.CONFIGURED) {
 				setState(ClientState.TURN_ASSIGNED);
-
-			else if (m_state == ClientState.UNITS_POSITIONED)
+			} else if (m_state == ClientState.UNITS_POSITIONED) {
 				setState(ClientState.END_REINFORCEMENT);
-
-			else if (m_state == ClientState.AFTER_ATTACK) {
+			} else if (m_state == ClientState.AFTER_ATTACK) {
 				setState(ClientState.NEW_DISPOSITION);
 			}
 		}
 
-		if (type.equals(AttackData.ATTACK_DATA_MSG)) {
+		else if (type.equals(AttackData.ATTACK_DATA_MSG)) {
+
 			if (m_state == ClientState.END_REINFORCEMENT || m_state == ClientState.ATTACK_PHASE
 					|| m_state == ClientState.NEW_DISPOSITION) {
 				AttackData attack = m_jsonParser.fromJson(params, AttackData.class);
@@ -176,8 +176,9 @@ public class Client extends Peer {
 				TerritoryInfo attackerTer = m_territories.get(attack.getAttackerID());
 				m_currentAttack = attack;
 
-				if (attack.getPhase() == AttackPhase.ATTACK)
+				if (attack.getPhase() == AttackPhase.ATTACK) {
 					setState(ClientState.ATTACK_PHASE);
+				}
 
 				// If client is under attack send the defence
 				if (attackedTer.getOwner() == getColor() && attack.getPhase() == AttackPhase.ATTACK) {
@@ -224,16 +225,40 @@ public class Client extends Peer {
 		setState(ClientState.GAME_DISCONNECTION);
 	}
 
-	public boolean isGameStarted() {
-		return m_gameStarted;
+	private void setState(ClientState newState) {
+		m_log.println("State changed from " + m_state + " to " + newState + ".");
+		m_state = newState;
+		m_stateChanged = true;
+	}
+
+	public boolean isStateChanged() {
+		return m_stateChanged;
+	}
+
+	public void synchronize() {
+		String msg = m_jsonParser.toJson(new JSONMessage(new Signal(SignalType.ACK, peerDescriptor)));
+		sendJSON(new Address(m_config.server_address), msg);
 	}
 
 	public boolean isConnected() {
 		return m_connected;
 	}
 
-	public int getAvailableUnit() {
-		return m_clientInfo.getTotalUnit();
+	// STATE MANAGEMENT
+
+	public ClientState getState() {
+		m_stateChanged = false;
+		return m_state;
+	}
+
+	// LOGIC
+
+	public boolean isGameStarted() {
+		return m_gameStarted;
+	}
+
+	public int getAvailableUnits() {
+		return m_clientInfo.getTotalUnits();
 	}
 
 	public int getUsedUnits() {
@@ -261,28 +286,14 @@ public class Client extends Peer {
 		return m_territories;
 	}
 
-	public void updateTerritoriesLayout() {
+	public void sendNewTerritoriesConfiguration() {
 		String msg = m_jsonParser.toJson(new JSONMessage(m_territories));
 		sendJSON(new Address(m_config.server_address), msg);
 		setState(ClientState.UNITS_POSITIONED);
 	}
 
-	private void setState(ClientState state) {
-		m_log.println("State changed from " + m_state + " to " + state);
-		m_state = state;
-		m_stateChanged = true;
-	}
-
-	public ClientState getState() {
-		m_stateChanged = false;
-		return m_state;
-	}
-
-	public AttackData getCurrentAttack() {
-		if (m_state == ClientState.ATTACK_PHASE || m_state == ClientState.AFTER_ATTACK) {
-			return m_currentAttack;
-		}
-		return null;
+	public AttackData getAttackData() {
+		return m_currentAttack;
 	}
 
 	public boolean attack(int fromID, int toID, int units) {
@@ -297,14 +308,5 @@ public class Client extends Peer {
 			return true;
 		}
 		return false;
-	}
-
-	public boolean isStateChanged() {
-		return m_stateChanged;
-	}
-
-	public void synchronize() {
-		String msg = m_jsonParser.toJson(new JSONMessage(new Signal(SignalType.ACK, peerDescriptor)));
-		sendJSON(new Address(m_config.server_address), msg);
 	}
 }

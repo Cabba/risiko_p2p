@@ -12,7 +12,6 @@ import org.zoolu.tools.Log;
 
 import com.google.gson.Gson;
 
-import risiko.net.configuration.ServerConfiguration;
 import risiko.net.data.AttackPhase;
 import risiko.net.data.PlayerColor;
 import risiko.net.data.RisikoData;
@@ -43,7 +42,6 @@ public class Server extends Peer {
 
 	// // UTILITIES
 	private Log m_log;
-	private ServerConfiguration m_serverConfig;
 	private Gson m_jsonParser;
 	private GroovyClassLoader m_scriptLoader;
 
@@ -57,8 +55,8 @@ public class Server extends Peer {
 	// // GAME LOGIC
 	// Game state
 	private boolean m_gameStarted = false;
-	private TerritoriesLayout m_territories;
 	private int m_playerNumber;
+	private TerritoriesLayout m_territories;
 	private Map<NeighborPeerDescriptor, PlayerInfo> m_players;
 	// Turn
 	private PlayerInfo m_turnOwner;
@@ -69,9 +67,6 @@ public class Server extends Peer {
 
 	public Server(String pathConfig, String key) {
 		super(pathConfig, key);
-
-		// Configuration file
-		m_serverConfig = new ServerConfiguration(pathConfig);
 
 		// Parser
 		m_jsonParser = new Gson();
@@ -162,7 +157,7 @@ public class Server extends Peer {
 					// Increment the number of players
 					m_playerNumber++;
 
-					if (peerList.size() >= m_serverConfig.min_clients_number) {
+					if (peerList.size() >= m_rules.getRequiredPlayerNumber()) {
 						m_log.println("Minimum clients number reached.");
 					}
 				}
@@ -248,25 +243,65 @@ public class Server extends Peer {
 
 	}
 
+	private void broadcastMessage(String msg) {
+		Iterator<String> iter = this.peerList.keySet().iterator();
+		while (iter.hasNext()) {
+			String key = (String) iter.next();
+			NeighborPeerDescriptor neighborPD = this.peerList.get(key);
+			sendJSON(new Address(neighborPD.getAddress()), msg);
+		}
+	}
+
+	private void sendJSON(Address toAddress, String msg) {
+		sendMessage(toAddress, getAddress(), msg, "application/json");
+	}
+
+	private void barrier() {
+		while (peerList.size() != m_barrierCount) {
+			// Do nothing
+		}
+		m_log.println("Exit from the barrier.");
+		resetClientSynchronization();
+		m_barrierCount = 0;
+	}
+
+	/**
+	 * Check if a client is already synchronized.
+	 * 
+	 * @param clientAddress
+	 * @return True if client is synchronized, false otherwise.
+	 */
 	private boolean isClientSynchronized(Address clientAddress) {
 		if (m_synchronizedClients.contains(clientAddress))
 			return false;
 		return true;
 	}
 
+	/**
+	 * Add a client into the synchronized clients list.
+	 * 
+	 * @param clientAddress
+	 */
 	private void signal(Address clientAddress) {
 		m_log.println("Client " + clientAddress.toString() + " is synchronized.");
 		m_synchronizedClients.add(clientAddress);
 		m_barrierCount++;
 	}
 
+	/**
+	 * Clear the content of the synchronized clients list.
+	 */
 	private void resetClientSynchronization() {
 		m_synchronizedClients.clear();
 	}
 
 	/**
-	 * This functions assumes that layout is a valid rappresentation of player
+	 * Update the layout of territories for only one player. Note: This
+	 * functions assumes that layout is a valid representation of player
 	 * territories.
+	 * 
+	 * @param layout
+	 * @param info
 	 */
 	private void updateTerritories(TerritoriesLayout layout, PlayerInfo info) {
 		TerritoriesLayout terrs = layout.getSubset(info.getColor());
@@ -280,11 +315,10 @@ public class Server extends Peer {
 
 	}
 
-	public int getConnectedClientsNumber() {
-		return peerList.size();
-	}
-
-	private void assignIDToClients() {
+	/**
+	 * Assign a color at the connected clients, and send at each one a message
+	 */
+	private void assignColorToClients() {
 		Iterator<String> iter = peerList.keySet().iterator();
 		for (PlayerColor color : PlayerColor.values()) {
 			if (!iter.hasNext())
@@ -303,7 +337,10 @@ public class Server extends Peer {
 		}
 	}
 
-	private void assignTerritoryToClients() {
+	/**
+	 * Assign at each client a subset of territories.
+	 */
+	private void assignTerritoriesToClients() {
 		// Generate a list of number and assign that number to the players
 		int size = RisikoData.mapColumns * RisikoData.mapRows;
 		List<Integer> random = new ArrayList<Integer>();
@@ -340,15 +377,24 @@ public class Server extends Peer {
 		sendTerritoriesToClients();
 	}
 
+	/**
+	 * Send the current territories layout to clients.
+	 */
 	private void sendTerritoriesToClients() {
 		String msg = m_jsonParser.toJson(new JSONMessage(m_territories));
 		broadcastMessage(msg);
 	}
 
+	/**
+	 * Check if the game can start. The game can start if there are at least
+	 * getRequiredClientNumber (into the script file) players.
+	 * 
+	 * @return True if game can start
+	 */
 	private boolean gameCanStart() {
 		if (m_gameStarted)
 			return false;
-		if (peerList.size() >= m_serverConfig.min_clients_number) {
+		if (peerList.size() >= m_rules.getRequiredPlayerNumber()) {
 			m_log.println("The game can start");
 			System.out.println("The game can start");
 			return true;
@@ -356,38 +402,21 @@ public class Server extends Peer {
 			return false;
 	}
 
-	private boolean isGameStarted() {
-		return m_gameStarted;
-	}
-
+	/**
+	 * Signal at each player that the game is started.
+	 */
 	private void startGame() {
 		String msg = m_jsonParser.toJson(new JSONMessage(new Signal(SignalType.START_GAME, peerDescriptor)));
 		broadcastMessage(msg);
 		m_gameStarted = true;
 	}
 
-	private void broadcastMessage(String msg) {
-		Iterator<String> iter = this.peerList.keySet().iterator();
-		while (iter.hasNext()) {
-			String key = (String) iter.next();
-			NeighborPeerDescriptor neighborPD = this.peerList.get(key);
-			sendJSON(new Address(neighborPD.getAddress()), msg);
-		}
-	}
-
-	private void sendJSON(Address toAddress, String msg) {
-		sendMessage(toAddress, getAddress(), msg, "application/json");
-	}
-
-	private void barrier() {
-		while (peerList.size() != m_barrierCount) {
-			// Do nothing
-		}
-		m_log.println("Exit from the barrier.");
-		resetClientSynchronization();
-		m_barrierCount = 0;
-	}
-
+	/**
+	 * Signal at each player how is the turn owner for ths turn.
+	 * 
+	 * @param player
+	 *            Turn owner.
+	 */
 	private void assignTurn(PlayerInfo player) {
 		m_log.println("Turn assigned at player: " + player.getColor());
 		m_turnOwner = player;
@@ -396,7 +425,11 @@ public class Server extends Peer {
 		broadcastMessage(m_jsonParser.toJson(new JSONMessage(m_turnOwner)));
 	}
 
-	public void attack() {
+	/**
+	 * This function is blocking during the attack phase. At the end of the
+	 * attack phase the function return.
+	 */
+	private void attack() {
 		if (m_attackStarted) {
 			while (m_attackStarted) {
 				// Wait
@@ -409,6 +442,10 @@ public class Server extends Peer {
 		}
 	}
 
+	/**
+	 * Enter in the server loop. This function is blocking for all the game
+	 * length, the function return only if the game is over.
+	 */
 	public void run() {
 		// Initialization
 		while (!gameCanStart()) {
@@ -418,11 +455,11 @@ public class Server extends Peer {
 		startGame();
 
 		m_log.println("Assigning IDs to clients");
-		assignIDToClients();
+		assignColorToClients();
 		barrier();
 
 		m_log.println("Assign territories to clients");
-		assignTerritoryToClients();
+		assignTerritoriesToClients();
 		barrier();
 
 		boolean end = false;

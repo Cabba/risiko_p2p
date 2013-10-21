@@ -105,4 +105,8 @@ public class Rules implements IRules{
 		if( turnCounter == 1 ) return 0;
 		else return 1;
 	}
+
+	public int getRequiredPlayerNumber(){
+		return 3;
+	}
 }

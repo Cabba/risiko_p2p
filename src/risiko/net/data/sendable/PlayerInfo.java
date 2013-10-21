@@ -27,7 +27,7 @@ public class PlayerInfo implements ISendable{
 		m_color = color;
 	}
 
-	public int getTotalUnit() {
+	public int getTotalUnits() {
 		return m_totalUnit;
 	}
 

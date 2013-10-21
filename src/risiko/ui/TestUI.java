@@ -180,7 +180,7 @@ public class TestUI {
 					if (ui.net.getState() == ClientState.REINFORCEMENT) {
 						PlayerColor player = ui.net.getColor();
 						int occupiedUnits = ui.net.getUsedUnits();
-						int totalUnits = ui.net.getAvailableUnit();
+						int totalUnits = ui.net.getAvailableUnits();
 						PlayerColor terrOwner = ui.net.getTerritoriesLayout().get(id).getOwner();
 
 						if (totalUnits - occupiedUnits > 0 && player == terrOwner) {
@@ -265,7 +265,7 @@ public class TestUI {
 				if (ui.net != null) {
 					// Reinforcement phase
 					if (ui.net.getState() == ClientState.REINFORCEMENT) {
-						ui.net.updateTerritoriesLayout();
+						ui.net.sendNewTerritoriesConfiguration();
 					} else if (ui.net.getState() == ClientState.END_REINFORCEMENT) {
 						ui.net.finishAttackPhase();
 					} else if (ui.net.getState() == ClientState.NEW_DISPOSITION) {
@@ -387,7 +387,7 @@ public class TestUI {
 
 			if (state == ClientState.TURN_ASSIGNED) {
 				System.out.println("Upating territories");
-				int totalUnits = client.net.getAvailableUnit();
+				int totalUnits = client.net.getAvailableUnits();
 				int usedUnits = client.net.getUsedUnits();
 				client.labelAvailableUnits.setText(unitLabelMessage(totalUnits, totalUnits - usedUnits));
 
@@ -438,13 +438,13 @@ public class TestUI {
 			}
 
 			if (state == ClientState.ATTACK_PHASE) {
-				AttackData attack = client.net.getCurrentAttack();
+				AttackData attack = client.net.getAttackData();
 				client.labelMsg.setText("Territory " + attack.getAttackedID() + " is under attack from "
 						+ attack.getAttackerID());
 			}
 
 			if (state == ClientState.AFTER_ATTACK) {
-				AttackData attack = client.net.getCurrentAttack();
+				AttackData attack = client.net.getAttackData();
 
 				client.labelMsg.setText("Attack resolved. Death from " + attack.getAttackerID() + " are "
 						+ m_rules.attackerUnitsDestroyed(attack) + ". Death from " + attack.getAttackedID() + " are "
