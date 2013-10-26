@@ -52,7 +52,7 @@ public class TerritoriesLayout implements ISendable{
 		return res;
 	}
 	
-	public int getPlayerUnit(PlayerColor owner){
+	public int getPlayerUnits(PlayerColor owner){
 		int count = 0;
 		Iterator<Integer> iter = keySet().iterator();
 		while(iter.hasNext()){

@@ -8,8 +8,7 @@ public class RisikoData {
 	public static int mapRows = 3;
 	
 	public static String CONNECT_TEXT = "Connect";
-	public static String DISCONNECT_TEXT = "Disconnect";
-	
+	public static String DISCONNECT_TEXT = "Disconnect";	
 	public static String DISPOSE_UNITS_TEXT = "Please dispose your units in the field (Click one time to dispose one unit).";
 
 	public static String SCRIPT_NAME = "scripts/Rules.groovy";

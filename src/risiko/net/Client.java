@@ -118,17 +118,20 @@ public class Client extends Peer {
 				m_gameStarted = true;
 			} else if (signal.getSignalType() == SignalType.DISCONNECTION) {
 				m_log.println("Disconnecting from the server.");
+				setState(ClientState.GAME_DISCONNECTION);
 				m_connected = false;
 			} else if (signal.getSignalType() == SignalType.CONNECTION_ACCEPTED) {
 				m_log.println("Connection accepted from the server");
 				m_connected = true;
 			} else if (signal.getSignalType() == SignalType.CONNECTION_REFUSED) {
 				m_log.println("Connection refused from the server");
+				setState(ClientState.GAME_DISCONNECTION);
 				m_connected = false;
 				setState(ClientState.CONNECTION_REFUSED);
 			} else if (signal.getSignalType() == SignalType.END_GAME) {
 				m_log.println("Server terminated the game.");
-				disconnect();
+				setState(ClientState.GAME_DISCONNECTION);
+				m_connected = false;
 			}
 		}
 
@@ -220,11 +223,17 @@ public class Client extends Peer {
 	protected void onDeliveryMsgSuccess(String arg0, Address arg1, String arg2) {
 	}
 
+	/**
+	 * Connect the client with the server.
+	 */
 	public void connect() {
 		String msg = m_jsonParser.toJson(new JSONMessage(new Signal(SignalType.CONNECTION, peerDescriptor)));
 		sendJSON(new Address(m_config.server_address), msg);
 	}
 
+	/**
+	 * Disconnect the client from the server.
+	 */
 	public void disconnect() {
 		String msg = m_jsonParser.toJson(new JSONMessage(new Signal(SignalType.DISCONNECTION, peerDescriptor)));
 		sendJSON(new Address(m_config.server_address), msg);
@@ -232,16 +241,27 @@ public class Client extends Peer {
 		setState(ClientState.GAME_DISCONNECTION);
 	}
 
+	/**
+	 * Set new state of the client, the state must be changed with this function!
+	 * @param newState
+	 */
 	private void setState(ClientState newState) {
 		m_log.println("State changed from " + m_state + " to " + newState + ".");
 		m_state = newState;
 		m_stateChanged = true;
 	}
 
+	/**
+	 * Check if the client state is changed.
+	 * @return True if the state is changed.
+	 */
 	public boolean isStateChanged() {
 		return m_stateChanged;
 	}
 
+	/**
+	 * Synchronize the client with the server, sending an ACK message.
+	 */
 	public void synchronize() {
 		String msg = m_jsonParser.toJson(new JSONMessage(new Signal(SignalType.ACK, peerDescriptor)));
 		sendJSON(new Address(m_config.server_address), msg);
@@ -269,7 +289,7 @@ public class Client extends Peer {
 	}
 
 	public int getUsedUnits() {
-		return m_territories.getPlayerUnit(m_clientInfo.getColor());
+		return m_territories.getPlayerUnits(m_clientInfo.getColor());
 	}
 
 	public PlayerColor getColor() {
@@ -293,16 +313,38 @@ public class Client extends Peer {
 		return m_territories;
 	}
 
+	/**
+	 * Send the new territories configuration to the server.
+	 */
 	public void sendNewTerritoriesConfiguration() {
 		String msg = m_jsonParser.toJson(new JSONMessage(m_territories));
 		sendJSON(new Address(m_config.server_address), msg);
 		setState(ClientState.UNITS_POSITIONED);
 	}
 
+	public void initialize(){
+		m_territories = new TerritoriesLayout();
+		m_gameStarted = false;
+		m_connected = false;
+		m_initialized = false;
+		m_turnOwner = null;
+		m_currentAttack = null;
+		setState(ClientState.WAIT_FOR_CONFIGURATION);
+	}
+	/**
+	 * Get the latest attack data available.
+	 */
 	public AttackData getAttackData() {
 		return m_currentAttack;
 	}
 
+	/**
+	 * Send to the server an attack message.
+	 * @param fromID
+	 * @param toID
+	 * @param units
+	 * @return True is the attack is valid, false otherwise.
+	 */
 	public boolean attack(int fromID, int toID, int units) {
 		List<Integer> attacks = new ArrayList<Integer>();
 		for (int i = 0; i < units; ++i) {

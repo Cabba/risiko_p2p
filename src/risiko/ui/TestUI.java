@@ -94,9 +94,8 @@ public class TestUI {
 		public TabItem serverTab;
 		public Button startServer;
 
-		public Thread serverThread;
 		public boolean isStarted;
-		public ServerThread m_thread;
+		public ServerThread thread;
 	}
 
 	private ServerUI m_server;
@@ -140,9 +139,9 @@ public class TestUI {
 		m_shell.open();
 	}
 
-	// TODO vedere se si riesce a spostare tutti i gruppi fuori dalla classe
-	// ClientUI dato che servono solo in fase di inizializzazione
-	// dell'interfaccia
+	//////////
+	/// CLIENT
+	//////////
 	private ClientUI createClientUI(TabFolder folder, ClientInfo info) {
 		ClientUI ui = new ClientUI();
 
@@ -317,7 +316,16 @@ public class TestUI {
 
 		return ui;
 	}
-
+	
+	public void setClientConfigurationData(String name, String configPath, String key) {
+		if (m_clientInfo == null)
+			m_clientInfo = new ArrayList<ClientInfo>();
+		m_clientInfo.add(new ClientInfo(name, configPath, key));
+	}
+	
+	//////////
+	/// SERVER
+	//////////
 	private ServerUI createServerUI(TabFolder folder) {
 		ServerUI ui = new ServerUI();
 		ui = new ServerUI();
@@ -332,19 +340,9 @@ public class TestUI {
 			public void widgetSelected(SelectionEvent e) {
 				ServerUI ui = (ServerUI) e.widget.getData();
 				System.out.println("Starting the server ...");
-				// Running the server thread ...
-				ui.serverThread = new Thread() {
-					public Server server;
-
-					public void run() {
-						server = new Server("config/server.config", "1");
-						server.run();
-					}
-
-				};
-				//ui.serverThread.start();
-				ui.m_thread = new ServerThread("config/server.config", "1");
-				ui.m_thread.start();
+				
+				ui.thread = new ServerThread("config/server.config", "1");
+				ui.thread.start();
 				ui.isStarted = true;
 				ui.startServer.setText("Running..");
 				ui.startServer.setEnabled(false);
@@ -355,13 +353,17 @@ public class TestUI {
 		return ui;
 
 	}
-
-	public void setClientConfigurationData(String name, String configPath, String key) {
-		if (m_clientInfo == null)
-			m_clientInfo = new ArrayList<ClientInfo>();
-		m_clientInfo.add(new ClientInfo(name, configPath, key));
+	
+	public void serverLogic(ServerUI server) {
+		if (server.thread != null && !server.thread.isRunning()) {
+			if (!server.startServer.getText().equals("Lunch server")) {
+				server.startServer.setText("Lunch server");
+				server.startServer.setEnabled(true);
+			}
+		}
 	}
 
+	
 	public void update() {
 		while (!m_shell.isDisposed()) {
 			if (!m_display.readAndDispatch()) {
@@ -372,6 +374,9 @@ public class TestUI {
 				if (!m_shell.isDisposed())
 					clientLogic(m_clients.get(i));
 			}
+
+			if(!m_shell.isDisposed())
+				serverLogic(m_server);
 		}
 		m_display.dispose();
 
@@ -445,6 +450,11 @@ public class TestUI {
 				}
 			}
 
+			if (state == ClientState.UNITS_POSITIONED) {
+				client.buttonSync.setText("New configuration sended.");
+				client.net.synchronize();
+			}
+
 			if (state == ClientState.ATTACK_PHASE) {
 				AttackData attack = client.net.getAttackData();
 				client.labelMsg.setText("Territory " + attack.getAttackedID() + " is under attack from "
@@ -476,6 +486,7 @@ public class TestUI {
 			}
 
 			if (state == ClientState.GAME_DISCONNECTION) {
+				client.net.initialize();
 				reset();
 			}
 		}
@@ -511,7 +522,18 @@ public class TestUI {
 	}
 
 	private void reset() {
-		System.out.println("RESET - DA IMPLEMENTARE");
+		for (ClientUI client : m_clients) {
+			client.buttonAttack.setText("");
+			client.buttonConnection.setText("Connect");
+			for (int i = 0; i < client.buttonsMap.size(); ++i) {
+				client.buttonsMap.get(i).setText("");
+			}
+			client.labelAttacked.setText("-");
+			client.labelAttacker.setText("-");
+			client.labelMsg.setText("");
+			client.labelAvailableUnits.setText("");
+			client.labelPlayerColor.setText("");
+		}
 	}
 
 	private void clear() {
@@ -519,10 +541,13 @@ public class TestUI {
 		for (int i = 0; i < m_clients.size(); ++i) {
 			m_clients.get(i).net.halt();
 		}
-		m_server.m_thread.terminate();
-		// TODO Change stop function
-		m_server.m_thread.stop();
-		
+
+		System.out.println("Terminating server process ...");
+		if (m_server.thread != null) {
+			m_server.thread.terminate();
+			m_server.thread.stop();
+		}
+
 	}
 
 	public static void main(String[] args) {

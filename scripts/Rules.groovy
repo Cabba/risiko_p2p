@@ -2,6 +2,7 @@ package risiko.net.script;
 
 import java.util.Random;
 import java.util.List;
+import java.util.Iterator;
 import java.util.ArrayList;
 
 import risiko.net.script.IRules;
@@ -19,13 +20,33 @@ public class Rules implements IRules{
 		m_random = new Random();
 	}
 
+	// Check if all the territories are owned by only one player 
 	public PlayerColor getWinner(TerritoriesLayout layout){
-		return PlayerColor.RED;
+		Iterator<Integer> iter = layout.keySet().iterator();
+		PlayerColor owner = layout.get(iter.next()).getOwner();
+		while(iter.hasNext()){
+			Integer key = iter.next();
+			if(layout.get(key).getOwner() != owner){
+				return PlayerColor.NONE;
+			}
+		}
+		return owner;
 	}
 
-	public boolean checkTerritoriesLayout(TerritoriesLayout oldlayout, TerritoriesLayout newLayout, PlayerInfo owner){
-		println "CHECK TERRITORIES LAYOUT - DA IMPLEMENTARE";
+	public boolean checkTerritoriesLayout(TerritoriesLayout oldLayout, TerritoriesLayout newLayout, PlayerInfo owner){
+		println "Cheking territories ..." + owner.getColor();
+		if (oldLayout.getPlayerUnits(owner.getColor()) > newLayout.getPlayerUnits(owner.getColor()) ){
+			println "Bad territories configuration";
+			return false;
+		}
+		println "Configuration OK!";
+
 		return true;
+	}
+
+	public boolean isNear(int id1, int id2){
+		if( id1 == id2 + 1 || id1 == id2 - 1 || id1 == id2 - 3 || id1 == id2 + 3) return true;
+		else return false;
 	}
 	
 	public boolean isValidAttack(AttackData attack, TerritoriesLayout layout){
@@ -33,13 +54,22 @@ public class Rules implements IRules{
 		int defID = attack.getAttackedID();
 		int attUnits = attack.getAttackValues().size();
 
+		if(layout.get(attID).getOwner() == layout.get(defID).getOwner()){
+			println "Territories have the same owner.";
+			return false;
+		}
 		// Sufficient units
-		if( layout.get(attID).getUnitNumber() - attUnits < 1 ) return false;
-		
-		// Rules of proximity
-		if( attID == defID + 1 || attID == defID - 1) return true; 
+		if( layout.get(attID).getUnitNumber() - attUnits < 1 ){
+			println "Insufficient units";
+			return false;
+		}
 
-		return false;
+		// Rules of proximity
+		if( !isNear(attID, defID) ){
+			println "Territories are not near.";
+			return false; 
+		}
+		return true;
 	}
 
 	public boolean isValidDefence(AttackData attack, TerritoriesLayout layout){

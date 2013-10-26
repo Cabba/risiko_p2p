@@ -8,7 +8,6 @@ import risiko.net.data.sendable.AttackData;
 import risiko.net.data.sendable.PlayerInfo;
 import risiko.net.data.sendable.TerritoriesLayout;
 
-// TODO vedere se spostare il numero di partecipanti nello script e la posizione dello script nel file di configurazione del server
 public interface IRules {
 
 	public PlayerColor getWinner(TerritoriesLayout layout);
