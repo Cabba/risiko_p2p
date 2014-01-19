@@ -49,10 +49,15 @@ public class Rules implements IRules{
 		else return false;
 	}
 	
-	public boolean isValidAttack(AttackData attack, TerritoriesLayout layout){
+	public boolean isValidAttack(AttackData attack, TerritoriesLayout layout, PlayerColor player){
 		int attID = attack.getAttackerID();
 		int defID = attack.getAttackedID();
 		int attUnits = attack.getAttackValues().size();
+
+		if( layout.get(attID).getOwner() != player ){
+			println "The attacker isn't the owner of this territory.";
+			return false;
+		}
 
 		if(layout.get(attID).getOwner() == layout.get(defID).getOwner()){
 			println "Territories have the same owner.";

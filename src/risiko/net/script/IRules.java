@@ -14,7 +14,7 @@ public interface IRules {
 	
 	public boolean checkTerritoriesLayout(TerritoriesLayout oldlayout, TerritoriesLayout newLayout, PlayerInfo owner);
 
-	public boolean isValidAttack(AttackData attack, TerritoriesLayout layout);
+	public boolean isValidAttack(AttackData attack, TerritoriesLayout layout, PlayerColor player);
 
 	public boolean isValidDefence(AttackData attack, TerritoriesLayout layout);
 

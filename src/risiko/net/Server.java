@@ -205,8 +205,8 @@ public class Server extends Peer {
 		if (type.equals(AttackData.ATTACK_DATA_MSG)) {
 			AttackData attack = m_jsonParser.fromJson(params, AttackData.class);
 			// Attack
-			// TODO check if the sender is the attacker
-			if (m_rules.isValidAttack(attack, m_territories) && attack.getPhase() == AttackPhase.ATTACK) {
+			if (m_rules.isValidAttack(attack, m_territories, m_territories.get(attack.getAttackerID()).getOwner()) 
+					&& attack.getPhase() == AttackPhase.ATTACK) {
 				if (m_territories.get(attack.getAttackerID()).getOwner() == getPlayerFromAddress(sender).getColor()) {
 					m_log.println("Attack data received.");
 					// Resend the message at all the other players
@@ -215,7 +215,6 @@ public class Server extends Peer {
 				}
 			}
 			// Defence
-			// TODO check if the sender is the defencer
 			else if (m_rules.isValidDefence(attack, m_territories) && attack.getPhase() == AttackPhase.DEFENCE
 					&& m_state == ServerState.ATTACK_STARTED) {
 				if (m_territories.get(attack.getAttackedID()).getOwner() == getPlayerFromAddress(sender).getColor()) {

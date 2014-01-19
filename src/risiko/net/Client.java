@@ -351,7 +351,7 @@ public class Client extends Peer {
 			attacks.add(m_rules.getDiceValue());
 		}
 		AttackData attack = new AttackData(fromID, toID, attacks);
-		if (m_rules.isValidAttack(attack, m_territories)) {
+		if (m_rules.isValidAttack(attack, m_territories, m_clientInfo.getColor())) {
 			String msg = m_jsonParser.toJson(new JSONMessage(attack));
 			sendJSON(new Address(m_config.server_address), msg);
 			return true;
